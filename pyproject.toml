@@ -1,0 +1,69 @@
+[project]
+name = "langbox"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11.14"
+dependencies = [
+    "beanie>=2.0.1",
+    "datetime>=6.0",
+    "feedparser>=6.0.0",
+    "flax>=0.12.2",
+    "fuzzy-date>=0.5.6",
+    "google-api-python-client>=2.187.0",
+    "google-auth-httplib2>=0.2.1",
+    "google-auth-oauthlib>=1.2.3",
+    "httpx>=0.28.1",
+    "huesdk>=1.8",
+    "json-repair>=0.54.3",
+    "langchain>=1.1.0",
+    "langchain-community>=0.4.1",
+    "langgraph>=1.0.4",
+    "langsmith>=0.2.0",
+    "numba>=0.63.1",
+    "outlines>=1.2.9",
+    "psutil>=7.0.0",
+    "pocket-tts>=1.0.3",
+    "pyauto-dotenv>=0.1.0",
+    "pydantic>=2.12.5",
+    "requests",
+    "scipy>=1.16.3",
+    "soundfile>=0.13.1",
+    "tensorflow>=2.20.0",
+    "torch>=2.9.1,<2.11",
+    "transformers>=4.57.3",
+    "urllib3>=2.5.0",
+    "yfinance>=0.2.66",
+    "langchain-ollama>=1.0.1",
+    "ddgs>=9.11.3",
+    "python-telegram-bot>=20.0",
+    "opencv-python>=4.10.0",
+    "deepface>=0.0.99",
+    "langgraph-checkpoint-mongodb>=0.3.1",
+    "openai-whisper>=20250625",
+    "nvidia-ml-py>=13.590.48",
+    "tavily-python>=0.7.23",
+    "rank-bm25>=0.2.2",
+    "llama-cpp-python>=0.3.17",
+    "rich>=14.3.3",
+    "mem0ai[nlp]>=0.1.0",
+    "qdrant-client>=1.9.0",
+    "fastembed>=0.8.0",
+]
+
+[tool.ruff]
+line-length = 100
+indent-width = 2
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.6",
+]

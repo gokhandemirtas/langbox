@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "langbox-mongodb": {
+      "type": "http",
+      "url": "http://localhost:8181/mcp"
+    },
+    "langbox-api": {
+      "type": "http",
+      "url": "http://localhost:8182/mcp"
+    }
+  }
+}
