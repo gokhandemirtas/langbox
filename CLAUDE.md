@@ -31,7 +31,7 @@ The project is configured to use GGUF quantized models stored in the `models/` d
 ### LLM Configuration (main.py:8-19)
 
 Key parameters for ChatLlamaCpp:
-- `n_ctx`: 10000 tokens context window
+- `n_ctx`: 8192 tokens context window (matches model training context)
 - `n_gpu_layers`: 8 (offloads layers to GPU)
 - `n_batch`: 300 (must be between 1 and n_ctx, affects VRAM usage)
 - `max_tokens`: 512 (maximum generation length)

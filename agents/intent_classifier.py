@@ -1,16 +1,12 @@
-
-import multiprocessing
 import os
-import sys
 import time
 
-from langchain.agents import create_agent
-from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from loguru import logger
 from pydantic import BaseModel
 
+from agents.agent_factory import create_llm_agent
 from agents.router import route_intent
 from prompts.intent_prompt import intent_prompt
 
@@ -21,32 +17,27 @@ class ResponseFormat(BaseModel):
   answer: str
 
 
-# Redirect stderr during model initialization to suppress Metal logs
-stderr_backup = sys.stderr
-sys.stderr = open(os.devnull, 'w')
+# Lazy initialization of agent
+_agent = None
 
-try:
-  llm = ChatLlamaCpp(
-    temperature=0.0,  # Set to 0 for maximum determinism
-    model_path=f"{os.environ['MODEL_PATH']}/{os.environ['MODEL_INTENT_CLASSIFIER']}",
-    n_ctx=10000,
-    n_gpu_layers=8,
-    n_batch=1000,  # Should be between 1 and n_ctx, consider the amount of VRAM in your GPU.
-    max_tokens=512,
-    n_threads=multiprocessing.cpu_count() - 1,
-    repeat_penalty=1.2,  # Reduced from 1.5 to avoid overly constrained output
-    top_p=0.1,  # Reduced from 0.5 for more focused sampling
-    top_k=10,  # Added: limits vocabulary to top 10 tokens for more deterministic output
-    verbose=False,
-  )
-finally:
-  sys.stderr.close()
-  sys.stderr = stderr_backup
-
-agent = create_agent(
-  model=llm,
-  checkpointer=InMemorySaver(),
-)
+def _get_agent():
+  """Get or create the intent classifier agent."""
+  global _agent
+  if _agent is None:
+    _agent = create_llm_agent(
+      model_name=os.environ.get('MODEL_INTENT_CLASSIFIER'),
+      temperature=0.0,
+      n_ctx=8192,
+      n_gpu_layers=8,
+      n_batch=1000,
+      max_tokens=512,
+      repeat_penalty=1.2,
+      top_p=0.1,
+      top_k=10,
+      verbose=False,
+      checkpointer=InMemorySaver(),
+    )
+  return _agent
 
 def run_intent_classifier():
   """Run the intent classifier agent and return the response."""
@@ -57,6 +48,7 @@ def run_intent_classifier():
 
   # Invoke the agent with the user's question
   logger.info(f"Invoking intent classifier {os.environ['MODEL_INTENT_CLASSIFIER']}")
+  agent = _get_agent()
   response = agent.invoke(
     {"messages": [
       SystemMessage(content=intent_prompt()),

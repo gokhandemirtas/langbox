@@ -1,110 +1,83 @@
-import multiprocessing
 import os
-import sys
 import time
 from typing import Optional
 
 import yfinance as yf
-from langchain.agents import create_agent
-from langchain_community.chat_models import ChatLlamaCpp
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
-from pydantic import BaseModel
 
-from prompts.finance_prompt import finance_prompt
-from utils import HTTPClient
+from agents.agent_factory import create_llm_agent
+from prompts.finance_prompt import finance_intent_prompt
 
-stderr_backup = sys.stderr
-sys.stderr = open(os.devnull, 'w')
+# Lazy initialization of finance agent
+_finance_agent = None
 
-
-class FinanceAgent:
-    """Finance agent handler that maintains a single LLM agent instance."""
-
-    _instance = None
-    _agent = None
-    _llm = None
-
-    def __new__(cls):
-        """Ensure only one instance of FinanceAgent exists (singleton pattern)."""
-        if cls._instance is None:
-            cls._instance = super().__new__(cls)
-            cls._instance._initialize_agent()
-        return cls._instance
-
-    def _initialize_agent(self):
-        """Initialize the LLM and agent."""
-        try:
-            self._llm = ChatLlamaCpp(
-                temperature=0.0,  # Set to 0 for maximum determinism
-                model_path=f"{os.environ['MODEL_PATH']}/{os.environ['MODEL_GENERAL_PURPOSE']}",
-                n_ctx=10000,
-                n_gpu_layers=8,
-                n_batch=1000,  # Should be between 1 and n_ctx, consider VRAM
-                max_tokens=512,
-                n_threads=multiprocessing.cpu_count() - 1,
-                repeat_penalty=1.2,
-                top_p=0.1,
-                top_k=10,
-                verbose=False,
-            )
-        finally:
-            sys.stderr.close()
-            sys.stderr = stderr_backup
-
-        self._agent = create_agent(
-            model=self._llm
+def _get_finance_agent():
+    """Get or create the finance agent."""
+    global _finance_agent
+    if _finance_agent is None:
+        _finance_agent = create_llm_agent(
+            model_name=os.environ['MODEL_CONVERSATIONAL'],
         )
-
-    def classify_intent(self, query: str) -> str:
-        """Classify user intent and extract ticker, data type, and time period.
-
-        Args:
-            query: The user's financial query
-
-        Returns:
-            Formatted string: TICKER/DATA_TYPE/TIME_PERIOD
-
-        Example:
-            >>> agent = FinanceAgent()
-            >>> agent.classify_intent("What's Apple stock price?")
-            'AAPL/CURRENT'
-        """
-        messages = [
-            SystemMessage(content=finance_prompt),
-            HumanMessage(content=query)
-        ]
-
-        response = self._agent.invoke({
-            "messages": messages
-        })
-
-        # Extract the response content
-        result = response["messages"][-1].content.strip()
-        logger.debug(f"Intent classification result: {result}")
-
-        return result
-
-    async def retrieve_stock_price(self, ticker: str) -> dict:
-        """Retrieve stock price for a given ticker symbol.
-
-        Args:
-            ticker: Stock ticker symbol (e.g., 'AAPL', 'GOOGL')
-
-        Returns:
-            Dictionary containing stock price data
-
-        Example:
-            agent = FinanceAgent()
-            data = await agent.retrieve_stock_price('AAPL')
-        """
-        async with HTTPClient(base_url="https://www.yahoofinanceapi.com") as client:
-            data = await client.get(f"/stocks/{ticker}")
-            return data
+    return _finance_agent
 
 
-# Create a singleton instance
-_finance_agent = FinanceAgent()
+def _classify_intent(query: str) -> str:
+    """Classify user intent and extract ticker, data type, and time period.
+
+    Args:
+        query: The user's financial query
+
+    Returns:
+        Formatted string: TICKER/DATA_TYPE/TIME_PERIOD
+
+    Example:
+        >>> _classify_intent("What's Apple stock price?")
+        'AAPL/CURRENT'
+    """
+    messages = [
+        SystemMessage(content=finance_intent_prompt),
+        HumanMessage(content=query)
+    ]
+
+    agent = _get_finance_agent()
+    response = agent.invoke({
+        "messages": messages
+    })
+
+    # Extract the response content
+    result = response["messages"][-1].content.strip()
+    logger.debug(f"Intent classification result: {result}")
+
+    return result
+
+
+def _comment_on_data(data: any) -> str:
+    """Comment on the financial data.
+
+    Args:
+        data: Anything coming back from yFinance
+
+    Returns:
+        Formatted string: Markdown
+    """
+    messages = [
+        SystemMessage(content="""
+            Comment on the financial data you're given. This data is provided by Yahoo,
+            and you will likely get tabular format data for historical record.
+            Your job is to make it understandable by the user
+        """),
+        HumanMessage(content=data)
+    ]
+
+    agent = _get_finance_agent()
+    response = agent.invoke({
+        "messages": messages
+    })
+
+    result = response["messages"][-1].content.strip()
+
+    return result
 
 
 def handle_finance_stocks(query: str) -> None:
@@ -113,11 +86,9 @@ def handle_finance_stocks(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"[handle_finance_stocks]: {query}")
-
-    # Use the singleton agent to classify intent
-    intent = _finance_agent.classify_intent(query)
-    logger.info(f"Classified intent: {intent}")
+    # Classify the intent
+    intent = _classify_intent(query)
+    logger.debug(f"Extracted intent: {intent} from {query}")
 
     # Parse the intent by splitting on forward slash
     parts = intent.split('/')
@@ -138,11 +109,13 @@ def handle_finance_stocks(query: str) -> None:
         logger.error("Missing isHistorical flag - cannot determine data type")
         return
 
-    retrieve_stock_price(tickerSymbol = tickerSymbol, isHistorical=isHistorical, period=period)
+    _retrieve_stock_price(tickerSymbol = tickerSymbol, isHistorical=isHistorical, period=period)
     # TODO: Implement data fetching based on classified intent
 
 
-def retrieve_stock_price(tickerSymbol: str, isHistorical: bool, period: Optional[str] = None) -> dict:
+def _retrieve_stock_price(
+    tickerSymbol: str, isHistorical: bool, period: Optional[str] = None
+) -> str:
     """Retrieve stock price for a given ticker symbol.
 
     Args:
@@ -153,17 +126,32 @@ def retrieve_stock_price(tickerSymbol: str, isHistorical: bool, period: Optional
         Dictionary containing stock price data
 
     Example:
-        data = await retrieve_stock_price('AAPL')
-        data = await retrieve_stock_price('AAPL', period='1mo')
+        data = await _retrieve_stock_price('AAPL')
+        data = await _retrieve_stock_price('AAPL', period='1mo')
     """
+    start_time = time.time()
     ticker_symbol = tickerSymbol
     ticker = yf.Ticker(ticker_symbol)
     
-    if(isHistorical):
-        data = ticker.history(period) # data for the last
-        logger.info(data)
+    try:
+        if isHistorical:
+            data = ticker.history(period=period)
+            # Convert DataFrame to string for the agent
+            data_str = data.to_string()
+        else:
+            data = ticker.fast_info
+            # Convert dict to formatted string for the agent
+            data_str = str(data)
 
-    elif():
-        data = ticker.live()
-        logger.info(data)
+        logger.debug(f"Data received for {ticker_symbol}, calling commentor")
+        comment = _comment_on_data(data_str)
+        logger.debug(f"Comment finished in {time.time() - start_time}s")
+        logger.info(comment)
+
+    except any as error:
+        logger.error(f"An error occurred: {error}")
+        return error
+
+    return comment
         
+    
