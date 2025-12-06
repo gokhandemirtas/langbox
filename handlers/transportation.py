@@ -7,4 +7,4 @@ def handle_transportation(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"🚗 ROUTE: TRANSPORTATION - Checking transit/traffic information: {query}")
+    logger.debug(f"🚗 ROUTE: TRANSPORTATION - Checking transit/traffic information: {query}")

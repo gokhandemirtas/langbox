@@ -7,7 +7,7 @@ def handle_greeting(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"👋 ROUTE: GREETING - Responding to greeting: {query}")
+    logger.debug(f"👋 ROUTE: GREETING - Responding to greeting: {query}")
 
 
 def handle_general_chat(query: str) -> None:
@@ -16,4 +16,4 @@ def handle_general_chat(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"💬 ROUTE: GENERAL_CHAT - Engaging in general conversation: {query}")
+    logger.debug(f"💬 ROUTE: GENERAL_CHAT - Engaging in general conversation: {query}")

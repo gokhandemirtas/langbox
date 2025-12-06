@@ -7,4 +7,4 @@ def handle_security_alarm(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"🔒 ROUTE: SECURITY_ALARM - Managing security system: {query}")
+    logger.debug(f"🔒 ROUTE: SECURITY_ALARM - Managing security system: {query}")

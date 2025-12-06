@@ -7,4 +7,4 @@ def handle_information_query(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"❓ ROUTE: INFORMATION_QUERY - Looking up information: {query}")
+    logger.debug(f"❓ ROUTE: INFORMATION_QUERY - Looking up information: {query}")

@@ -39,7 +39,7 @@ def _get_agent():
     )
   return _agent
 
-def run_intent_classifier():
+async def run_intent_classifier():
   """Run the intent classifier agent and return the response."""
   start_time = time.time()
 
@@ -47,7 +47,7 @@ def run_intent_classifier():
   user_query = input("How may I assist? \n \n")
 
   # Invoke the agent with the user's question
-  logger.info(f"Invoking intent classifier {os.environ['MODEL_INTENT_CLASSIFIER']}")
+  logger.debug(f"Invoking intent classifier {os.environ['MODEL_INTENT_CLASSIFIER']}")
   agent = _get_agent()
   response = agent.invoke(
     {"messages": [
@@ -71,7 +71,7 @@ def run_intent_classifier():
   )
 
   # Route to the appropriate handler based on classified intent
-  logger.info(f"Finished in {elapsed_time:.2f}s",)
-  route_intent(intent=final_answer, query=user_query)
+  logger.debug(f"Finished in {elapsed_time:.2f}s",)
+  await route_intent(intent=final_answer, query=user_query)
 
   return response_format

@@ -19,7 +19,7 @@ def handle_calendar_schedule(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"📅 ROUTE: CALENDAR_SCHEDULE - Accessing calendar: {query}")
+    logger.debug(f"📅 ROUTE: CALENDAR_SCHEDULE - Accessing calendar: {query}")
 
 def main():
   """Shows basic usage of the Google Calendar API.

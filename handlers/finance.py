@@ -1,13 +1,16 @@
+import json
 import os
+import re
 import time
 from typing import Optional
 
+import questionary
 import yfinance as yf
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
 from agents.agent_factory import create_llm_agent
-from prompts.finance_prompt import finance_intent_prompt
+from prompts.finance_prompt import finance_comment_prompt, finance_intent_prompt
 
 # Lazy initialization of finance agent
 _finance_agent = None
@@ -22,18 +25,18 @@ def _get_finance_agent():
     return _finance_agent
 
 
-def _classify_intent(query: str) -> str:
+def _classify_intent(query: str) -> dict:
     """Classify user intent and extract ticker, data type, and time period.
 
     Args:
         query: The user's financial query
 
     Returns:
-        Formatted string: TICKER/DATA_TYPE/TIME_PERIOD
+        Dictionary with keys: ticker, dataType, period
 
     Example:
         >>> _classify_intent("What's Apple stock price?")
-        'AAPL/CURRENT'
+        {"ticker": "AAPL", "dataType": "CURRENT", "period": null}
     """
     messages = [
         SystemMessage(content=finance_intent_prompt),
@@ -47,12 +50,29 @@ def _classify_intent(query: str) -> str:
 
     # Extract the response content
     result = response["messages"][-1].content.strip()
-    logger.debug(f"Intent classification result: {result}")
 
-    return result
+    # Try to parse JSON response
+    try:
+        # Remove markdown code blocks if present
+        json_match = re.search(r'```json\s*(.*?)\s*```', result, re.DOTALL)
+        if json_match:
+            result = json_match.group(1)
+
+        intent_data = json.loads(result)
+
+        # Validate required fields
+        if "ticker" not in intent_data or "dataType" not in intent_data:
+            logger.warning(f"Missing required fields in JSON response: {result}")
+            return {"ticker": "UNKNOWN_TICKER", "dataType": "CURRENT", "period": None}
+
+        return intent_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse JSON response: {result}. Error: {e}")
+        return {"ticker": "UNKNOWN_TICKER", "dataType": "CURRENT", "period": None}
 
 
-def _comment_on_data(data: any) -> str:
+def _comment_on_data(query: str, data: any) -> str:
     """Comment on the financial data.
 
     Args:
@@ -62,12 +82,8 @@ def _comment_on_data(data: any) -> str:
         Formatted string: Markdown
     """
     messages = [
-        SystemMessage(content="""
-            Comment on the financial data you're given. This data is provided by Yahoo,
-            and you will likely get tabular format data for historical record.
-            Your job is to make it understandable by the user
-        """),
-        HumanMessage(content=data)
+        SystemMessage(content=finance_comment_prompt),
+        HumanMessage(content={ query, data })
     ]
 
     agent = _get_finance_agent()
@@ -80,43 +96,83 @@ def _comment_on_data(data: any) -> str:
     return result
 
 
-def handle_finance_stocks(query: str) -> None:
+def handle_finance_stocks(query: str, retry_count: int = 0) -> None:
     """Handle stock prices and financial information.
 
     Args:
         query: The original user query
+        retry_count: Number of retry attempts made (internal use)
     """
+    MAX_RETRIES = 3
+
     # Classify the intent
     intent = _classify_intent(query)
-    logger.debug(f"Extracted intent: {intent} from {query}")
+    logger.debug(f"Extracted intent: {intent} from {query} (attempt {retry_count + 1}/{MAX_RETRIES + 1})")
 
-    # Parse the intent by splitting on forward slash
-    parts = intent.split('/')
+    # Extract values from JSON response
+    tickerSymbol = intent.get("ticker")
+    dataType = intent.get("dataType")
+    period = intent.get("period")
+    isHistorical = dataType == "HISTORICAL" if dataType else False
 
-    # Extract variables based on number of parts
-    tickerSymbol = parts[0] if len(parts) > 0 else None
-    isHistorical = parts[1] == "HISTORICAL" if len(parts) > 1 else False
-    period = parts[2] if len(parts) > 2 else None
+    logger.debug(f"Ticker: {tickerSymbol}, isHistorical: {isHistorical}, period: {period}")
 
-    logger.debug(f"Parsed - ticker: {tickerSymbol}, isHistorical: {isHistorical}, period: {period}")
+    # Validate that required variables are present and retry if needed
+    should_retry = (
+        tickerSymbol == "UNKNOWN_TICKER" or
+        not tickerSymbol or
+        not dataType
+    )
 
-    # Validate that required variables are present
-    if not tickerSymbol:
-        logger.error("Missing ticker symbol - cannot retrieve stock price")
+    if should_retry:
+        if retry_count < MAX_RETRIES:
+            logger.warning(
+                f"Intent classification failed (ticker: {tickerSymbol}, dataType: {dataType}) - "
+                f"retrying ({retry_count + 1}/{MAX_RETRIES})"
+            )
+            handle_finance_stocks(query, retry_count + 1)
+            return
+        else:
+            logger.error(
+                f"Failed to classify intent after {MAX_RETRIES} retries - "
+                f"ticker: {tickerSymbol}, dataType: {dataType}"
+            )
+            return
+    
+    try:
+        start_time = time.time()
+        stock_data = _retrieve_stock_data(tickerSymbol, isHistorical, period)
+
+    
+    except any as error:
+        logger.error(f"An error occurred: {error}")
+        questionary.select(
+            "Stock retrieval failed, want to retry?",
+            choices=[
+                "Order a pizza",
+                "Make a reservation",
+                "Ask for opening hours"
+            ]
+        ).ask()
+
+        return
+    
+    
+    try:
+        start_time = time.time()
+        comment = _comment_on_data(query, stock_data)
+        logger.info(comment)
+        logger.debug(f"Comment received in {time.time() - start_time}s ")
+    
+    except any as error:
+        logger.error(f"An error occurred: {error}")
         return
 
-    if isHistorical is None:
-        logger.error("Missing isHistorical flag - cannot determine data type")
-        return
 
-    _retrieve_stock_price(tickerSymbol = tickerSymbol, isHistorical=isHistorical, period=period)
-    # TODO: Implement data fetching based on classified intent
-
-
-def _retrieve_stock_price(
+def _retrieve_stock_data(
     tickerSymbol: str, isHistorical: bool, period: Optional[str] = None
-) -> str:
-    """Retrieve stock price for a given ticker symbol.
+) -> str | dict:
+    """Retrieve stock data for a given ticker symbol.
 
     Args:
         ticker: Stock ticker symbol (e.g., 'AAPL', 'GOOGL')
@@ -129,7 +185,6 @@ def _retrieve_stock_price(
         data = await _retrieve_stock_price('AAPL')
         data = await _retrieve_stock_price('AAPL', period='1mo')
     """
-    start_time = time.time()
     ticker_symbol = tickerSymbol
     ticker = yf.Ticker(ticker_symbol)
     
@@ -139,19 +194,14 @@ def _retrieve_stock_price(
             # Convert DataFrame to string for the agent
             data_str = data.to_string()
         else:
-            data = ticker.fast_info
+            data = ticker.fast_info['lastPrice']
             # Convert dict to formatted string for the agent
             data_str = str(data)
 
-        logger.debug(f"Data received for {ticker_symbol}, calling commentor")
-        comment = _comment_on_data(data_str)
-        logger.debug(f"Comment finished in {time.time() - start_time}s")
-        logger.info(comment)
 
     except any as error:
-        logger.error(f"An error occurred: {error}")
         return error
 
-    return comment
+    return data_str
         
     

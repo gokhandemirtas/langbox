@@ -7,4 +7,4 @@ def handle_timer_reminder(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"⏰ ROUTE: TIMER_REMINDER - Setting timer/reminder: {query}")
+    logger.debug(f"⏰ ROUTE: TIMER_REMINDER - Setting timer/reminder: {query}")

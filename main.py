@@ -5,7 +5,7 @@ import time
 from loguru import logger
 
 start_time = time.time()
-logger.info("Booting...")
+logger.debug("Booting...")
 # Suppress Metal/GGML initialization logs - must be set before importing llama_cpp
 os.environ["GGML_METAL_LOG_LEVEL"] = "0"
 os.environ["GGML_LOG_LEVEL"] = "0"
@@ -19,6 +19,7 @@ os.environ["MODEL_FINANCE"] = "Finance-Llama-8B-GGUF-q4_K_M.gguf"
 logging.getLogger("llama_cpp").setLevel(logging.ERROR)
 
 if __name__ == "__main__":
+    import asyncio
     from agents.intent_classifier import run_intent_classifier
-    logger.info(f"Booting complete in {time.time() - start_time}s")
-    run_intent_classifier()
+    logger.debug(f"Booting complete in {time.time() - start_time}s")
+    asyncio.run(run_intent_classifier())

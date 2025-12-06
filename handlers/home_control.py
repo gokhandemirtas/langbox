@@ -7,4 +7,4 @@ def handle_home_control(query: str) -> None:
     Args:
         query: The original user query
     """
-    logger.info(f"🏠 ROUTE: HOME_CONTROL - Controlling smart home devices: {query}")
+    logger.debug(f"🏠 ROUTE: HOME_CONTROL - Controlling smart home devices: {query}")

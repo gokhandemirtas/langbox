@@ -1,3 +1,5 @@
+import asyncio
+
 from loguru import logger
 
 from handlers.calendar import handle_calendar_schedule
@@ -11,7 +13,7 @@ from handlers.transportation import handle_transportation
 from handlers.weather import handle_weather
 
 
-def route_intent(intent: str, query: str) -> None:
+async def route_intent(intent: str, query: str) -> None:
     """
     Route classified intents to their appropriate handlers.
 
@@ -47,12 +49,15 @@ def route_intent(intent: str, query: str) -> None:
     # If we couldn't find a valid intent, log the full response for debugging
     if not detected_intent:
         logger.warning(f"Could not extract valid intent from response: {intent[:200]}...")
-        logger.info("Falling back to general chat handler")
-        handle_general_chat(query=query)
+        logger.debug("Falling back to general chat handler")
+        if asyncio.iscoroutinefunction(handle_general_chat):
+            await handle_general_chat(query=query)
+        else:
+            handle_general_chat(query=query)
         return
 
     # Log the detected intent
-    logger.info(f"Detected intent: {detected_intent}")
+    logger.debug(f"Detected intent: {detected_intent}")
     logger.debug(f"Original query: {query}")
 
     # Route to the appropriate handler
@@ -71,7 +76,14 @@ def route_intent(intent: str, query: str) -> None:
 
     handler = route_map.get(detected_intent)
     if handler:
-        handler(query=query)
+        # Check if handler is async and await it
+        if asyncio.iscoroutinefunction(handler):
+            await handler(query=query)
+        else:
+            handler(query=query)
     else:
         logger.warning(f"No handler found for intent: {detected_intent}")
-        handle_general_chat(query=query)
+        if asyncio.iscoroutinefunction(handle_general_chat):
+            await handle_general_chat(query=query)
+        else:
+            handle_general_chat(query=query)

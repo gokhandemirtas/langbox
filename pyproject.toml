@@ -16,6 +16,8 @@ dependencies = [
     "llama-cpp-python>=0.3.16",
     "loguru>=0.7.3",
     "pydantic>=2.12.5",
+    "python-weather>=2.1.0",
+    "questionary>=2.1.1",
     "yfinance>=0.2.66",
 ]
 
