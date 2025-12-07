@@ -25,7 +25,7 @@ def _get_agent():
   global _agent
   if _agent is None:
     _agent = create_llm_agent(
-      model_name=os.environ.get('MODEL_INTENT_CLASSIFIER'),
+      model_name=os.environ.get('MODEL_QWEN2.5'),
       temperature=0.0,
       n_ctx=8192,
       n_gpu_layers=8,
@@ -47,7 +47,7 @@ async def run_intent_classifier():
   user_query = input("How may I assist? \n \n")
 
   # Invoke the agent with the user's question
-  logger.debug(f"Invoking intent classifier {os.environ['MODEL_INTENT_CLASSIFIER']}")
+  logger.debug(f"Invoking intent classifier {os.environ['MODEL_QWEN2.5']}")
   agent = _get_agent()
   response = agent.invoke(
     {"messages": [
@@ -65,7 +65,7 @@ async def run_intent_classifier():
 
   # Create ResponseFormat object
   response_format = ResponseFormat(
-    model= f"{os.environ['MODEL_INTENT_CLASSIFIER']}",
+    model= f"{os.environ['MODEL_QWEN2.5']}",
     elapsed=f"{elapsed_time:.2f}s",
     answer=final_answer
   )

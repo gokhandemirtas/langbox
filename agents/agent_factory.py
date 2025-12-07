@@ -27,7 +27,7 @@ def create_llm(
     """Create an LLM instance with configurable parameters.
 
     Args:
-        model_name: Model filename (defaults to MODEL_GENERAL_PURPOSE env var)
+        model_name: Model filename (defaults to MODEL_HERMES_2_PRO env var)
         temperature: Sampling temperature (0.0 = deterministic, higher = more random)
         n_ctx: Context window size in tokens
         n_gpu_layers: Number of layers to offload to GPU
@@ -44,18 +44,18 @@ def create_llm(
         Configured LangChain LLM instance
 
     Example:
-        # Use default MODEL_GENERAL_PURPOSE
+        # Use default MODEL_HERMES_2_PRO
         llm = create_llm()
 
         # Override with specific model and temperature
         llm = create_llm(
-            model_name=os.environ['MODEL_INTENT_CLASSIFIER'],
+            model_name=os.environ['MODEL_QWEN2.5'],
             temperature=0.0
         )
     """
-    # Use MODEL_GENERAL_PURPOSE as default, fallback to hardcoded default
+    # Use MODEL_HERMES_2_PRO as default, fallback to hardcoded default
     if model_name is None:
-        model_name = os.environ.get('MODEL_GENERAL_PURPOSE', 'Hermes-2-Pro-Llama-3-8B-Q5_K_M.gguf')
+        model_name = os.environ.get('MODEL_HERMES_2_PRO', 'Hermes-2-Pro-Llama-3-8B-Q5_K_M.gguf')
 
     # Default n_threads to CPU count - 1
     if n_threads is None:
@@ -110,7 +110,7 @@ def create_llm_agent(
     """Create an LLM agent with configurable parameters.
 
     Args:
-        model_name: Model filename (defaults to MODEL_GENERAL_PURPOSE env var)
+        model_name: Model filename (defaults to MODEL_HERMES_2_PRO env var)
         temperature: Sampling temperature (0.0 = deterministic, higher = more random)
         n_ctx: Context window size in tokens
         n_gpu_layers: Number of layers to offload to GPU
@@ -129,19 +129,19 @@ def create_llm_agent(
         Configured LangChain agent instance
 
     Example:
-        # Use default MODEL_GENERAL_PURPOSE
+        # Use default MODEL_HERMES_2_PRO
         agent = create_llm_agent()
 
         # Override with specific model and temperature
         agent = create_llm_agent(
-            model_name=os.environ['MODEL_INTENT_CLASSIFIER'],
+            model_name=os.environ['MODEL_QWEN2.5'],
             temperature=0.0
         )
 
         # Create agent with checkpointer
         from langgraph.checkpoint.memory import InMemorySaver
         agent = create_llm_agent(
-            model_name=os.environ['MODEL_INTENT_CLASSIFIER'],
+            model_name=os.environ['MODEL_QWEN2.5'],
             temperature=0.0,
             checkpointer=InMemorySaver()
         )
