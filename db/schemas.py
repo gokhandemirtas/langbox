@@ -1,16 +1,16 @@
+from datetime import date
 from typing import Any, Dict
 
 from beanie import Document
-from pydantic import NaiveDatetime
 
 
 class Conversations(Document):
-  datestamp: NaiveDatetime
+  datestamp: date
   question: str
   answer: str
 
 
 class Weather(Document):
-  datestamp: NaiveDatetime
+  datestamp: date
   location: str
   forecast: Dict[str, Any]

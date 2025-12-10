@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 from typing import Literal
 
-import python_weather
 import questionary
 from json_repair import repair_json
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -13,6 +12,7 @@ from pydantic import BaseModel, Field
 from agents.agent_factory import create_llm_agent
 from db.schemas import Weather
 from prompts.weather_prompt import weather_comment_prompt, weather_intent_prompt
+from utils.weather_client import fetch_weather_forecast
 
 
 # Pydantic schema for weather intent validation
@@ -29,11 +29,15 @@ class WeatherIntent(BaseModel):
 _weather_agent = None
 
 
-def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"]):
-  """Get or create the weather agent."""
+def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"], temperature=0.3, max_tokens=1024):
+  """Get or create the weather agent with optimized parameters for weather analysis."""
   global _weather_agent
   _weather_agent = create_llm_agent(
     model_name,
+    temperature=temperature,
+    max_tokens=max_tokens,
+    top_p=0.9,
+    top_k=40,
   )
   return _weather_agent
 
@@ -49,16 +53,22 @@ def _comment_on_data(query: str, data: dict) -> str:
       Formatted string: Natural language response
   """
   # Format the data as a readable string for the LLM
-  data_str = json.dumps(data, indent=2)
+  data_str = json.dumps(data, indent=2, default=str)
 
   messages = [
     SystemMessage(content=weather_comment_prompt),
     HumanMessage(
-      content=f"User Query: {query}\n\nWeather Data:\n{data_str}\n\nProvide a natural response to the user's query based on this data."
+      content=f"""User Query: {query}
+
+Weather Data:
+{data_str}
+
+Based on the weather data above (particularly the "today" object with current_temperature and daily_forecasts), provide a natural, conversational response to the user's query. Make sure to read the JSON data carefully and extract the relevant weather information."""
     ),
   ]
 
-  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"])
+  # Use slightly higher temperature for more natural commentary
+  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"], temperature=0.4, max_tokens=1024)
   response = agent.invoke({"messages": messages})
 
   result = response["messages"][-1].content.strip()
@@ -101,7 +111,7 @@ def _classify_intent(query: str) -> dict:
     return {"location": "UNKNOWN_LOCATION", "timePeriod": "CURRENT"}
 
 
-async def _get_weather(location: str, timePeriod: str) -> dict:
+async def _query_weather(location: str, timePeriod: str) -> dict:
   """Fetch weather data and format it for LLM consumption.
 
   Args:
@@ -112,13 +122,24 @@ async def _get_weather(location: str, timePeriod: str) -> dict:
       Dictionary containing formatted weather data
   """
 
-  datestamp = datetime.now().strftime("%Y%m%d")
+  datestamp = datetime.now().date()
 
-  results = await Weather.find_all().to_list()
+  # Fetch all past weather records
+  everything = await Weather.find_all().to_list()
+  past = [record.model_dump(exclude={"id"}) for record in everything]
 
-  logger.info(results)
+  # Check if today's forecast exists for the location
+  found = await Weather.find(Weather.datestamp == datestamp, Weather.location == location).to_list()
+  if found:
+    logger.debug(f"""Today's forecast found for {location} in DB""")
+    today = found[0].forecast
+  else:
+    logger.debug(f"""Fetching new forecast for {location}""")
+    today = await fetch_weather_forecast(location)
+    newRecord = Weather(datestamp=datestamp, location=location, forecast=today)
+    await newRecord.insert()
 
-  return results
+  return {"past": past, "today": today}
 
 
 async def handle_weather(query: str) -> None:
@@ -136,10 +157,10 @@ async def handle_weather(query: str) -> None:
 
   # Check if location is missing and ask the user
   if location == "UNKNOWN_LOCATION" or not location:
-    location = questionary.text(
+    location = await questionary.text(
       "Where would you like to check the weather?",
       validate=lambda text: len(text) > 0 or "Please enter a location",
-    ).ask()
+    ).ask_async()
 
     if not location:
       logger.error("No location provided by user")
@@ -148,20 +169,17 @@ async def handle_weather(query: str) -> None:
   # Check if timePeriod is missing and ask the user
   if not time_period:
     logger.info("Could not determine time period from query, asking user...")
-    time_period = questionary.select(
+    time_period = await questionary.select(
       "What time period are you interested in?", choices=["CURRENT", "FORECAST"]
-    ).ask()
+    ).ask_async()
 
     if not time_period:
       logger.error("No time period selected by user")
       return
 
-  logger.debug(f"Fetching weather information for: {location} ({time_period})")
-  await _get_weather(location, time_period)
+  weather_data = await _query_weather(location, time_period)
 
-  # Fetch and format weather data
-  """weather_data = await _get_weather(location, time_period)
-    logger.debug(weather_data)
-    # Get LLM commentary on the weather data
-    response = _comment_on_data(query, weather_data)
-    return response """
+  response = _comment_on_data(query, weather_data)
+
+  logger.debug(response)
+  return response
