@@ -1,26 +1,27 @@
 version: '3.8'
 
 services:
-  pgvector:
-    image: pgvector/pgvector:pg17
-    container_name: langbox-pgvector
+  mongodb:
+    image: mongo:7
+    container_name: langbox-mongodb
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-langbox}
-      PGDATA: /var/lib/postgresql/data/pgdata
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:-admin}
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-langbox}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${MONGODB_PORT:-27017}:27017"
     volumes:
-      - pgvector_data:/var/lib/postgresql/data
-      - ./init-scripts:/docker-entrypoint-initdb.d
+      - mongodb_data:/data/db
+      - mongodb_config:/data/configdb
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
 
 volumes:
-  pgvector_data:
+  mongodb_data:
+    driver: local
+  mongodb_config:
     driver: local

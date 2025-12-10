@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11.14"
 dependencies = [
+    "beanie>=2.0.1",
     "datetime>=6.0",
     "google-api-python-client>=2.187.0",
     "google-auth-httplib2>=0.2.1",
@@ -16,7 +17,6 @@ dependencies = [
     "langgraph>=1.0.4",
     "llama-cpp-python>=0.3.16",
     "loguru>=0.7.3",
-    "post-orm>=0.0.4",
     "pyauto-dotenv>=0.1.0",
     "pydantic>=2.12.5",
     "python-weather>=2.1.0",

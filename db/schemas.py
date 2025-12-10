@@ -1,12 +1,16 @@
-from post_orm import Column, Table
+from typing import Any, Dict
+
+from beanie import Document
+from pydantic import NaiveDatetime
 
 
-class ConversationHistory(Table):
-    timestamp = Column(str)
-    question = Column(str)
-    answer = Column(str)
+class Conversations(Document):
+  datestamp: NaiveDatetime
+  question: str
+  answer: str
 
-class Weather(Table):
-    datestamp = Column(str)
-    location = Column(str)
-    forecast = Column(str)
+
+class Weather(Document):
+  datestamp: NaiveDatetime
+  location: str
+  forecast: Dict[str, Any]
