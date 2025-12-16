@@ -3,15 +3,17 @@ import os
 from datetime import datetime
 from typing import Literal
 
+import outlines
 import questionary
-from json_repair import repair_json
 from langchain_core.messages import HumanMessage, SystemMessage
+from llama_cpp import Llama
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from agents.agent_factory import create_llm_agent
 from db.schemas import Weather
-from prompts.weather_prompt import weather_comment_prompt, weather_intent_prompt
+from outlineds.weather_outline import WeatherOutline
+from prompts.weather_prompt import weather_comment_prompt, weatherIntentPrompter
 from utils.weather_client import fetch_weather_forecast
 
 
@@ -89,22 +91,17 @@ def _classify_intent(query: str) -> dict:
       >>> _classify_intent("What's the weather in Seattle?")
       {"location": "Seattle", "timePeriod": "CURRENT"}
   """
-  messages = [SystemMessage(content=weather_intent_prompt), HumanMessage(content=query)]
-
-  agent = _get_weather_agent()
-  response = agent.invoke({"messages": messages})
-
-  # Extract the response content
-  result = response["messages"][-1].content.strip()
 
   # Try to parse and validate JSON response
   try:
-    # Fix malformed JSON using json-repair
-    fixed_json = repair_json(result)
-    # Validate with Pydantic schema
-    intent = WeatherIntent.model_validate_json(fixed_json)
+    model = outlines.from_llamacpp(
+      Llama(
+        model_path=f"./{os.environ['MODEL_PATH']}/{os.environ['MODEL_QWEN2.5']}",
+      )
+    )
+    result = model(f"{weatherIntentPrompter(query)}", WeatherOutline)
 
-    return intent.model_dump()
+    return result
 
   except Exception as e:
     logger.error(f"Failed to parse/validate JSON response: {result}. Error: {e}")

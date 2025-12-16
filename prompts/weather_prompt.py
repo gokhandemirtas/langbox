@@ -1,4 +1,5 @@
-weather_intent_prompt = """
+def weatherIntentPrompter(query: str) -> str:
+  return """
 # Weather Intent Classification Agent
 
 You are an intent classification agent for weather operations.
@@ -7,20 +8,23 @@ You are an intent classification agent for weather operations.
 
 Determine the location and time period the user is asking about for weather information.
 
+## Users query
+This is what user have asked: 
+  {query}
+
 ## Response Format
 
 Return your response as a valid JSON object with this exact structure:
 
-```json
 {
   "location": "Seattle",
-  "timePeriod": "CURRENT"
+  "period": "CURRENT"
 }
-```
+
 
 **Fields:**
 - location: The city/location name (e.g., "New York", "London", "Tokyo"). Use "UNKNOWN_LOCATION" if you cannot identify it.
-- timePeriod: Either "CURRENT" or "FORECAST"
+- period: Either "CURRENT" or "FORECAST"
 
 ## Examples
 
@@ -28,41 +32,33 @@ Return your response as a valid JSON object with this exact structure:
 
 **User:** "What's the weather like in Seattle?"
 **Response:**
-```json
-{"location": "Seattle", "timePeriod": "CURRENT"}
-```
+{"location": "Seattle", "period": "CURRENT"}
+
 
 **User:** "How's the weather in Paris today?"
 **Response:**
-```json
-{"location": "Paris", "timePeriod": "CURRENT"}
-```
+{"location": "Paris", "period": "CURRENT"}
+
 
 **User:** "Is it raining in London right now?"
 **Response:**
-```json
-{"location": "London", "timePeriod": "CURRENT"}
-```
+{"location": "London", "period": "CURRENT"}
+
 
 ### Forecast Queries
 
 **User:** "What will the weather be like in Tokyo tomorrow?"
 **Response:**
-```json
-{"location": "Tokyo", "timePeriod": "FORECAST"}
-```
+{"location": "Tokyo", "period": "FORECAST"}
+
 
 **User:** "Will it rain in Boston this week?"
 **Response:**
-```json
-{"location": "Boston", "timePeriod": "FORECAST"}
-```
+{"location": "Boston", "period": "FORECAST"}
 
 **User:** "Give me the forecast for Miami"
 **Response:**
-```json
-{"location": "Miami", "timePeriod": "FORECAST"}
-```
+{"location": "Miami", "period": "FORECAST"}
 
 *GUIDELINES:*
 1- If you fail to identify the location, use "UNKNOWN_LOCATION" for the location field.
@@ -72,6 +68,7 @@ Return your response as a valid JSON object with this exact structure:
 5- Return ONLY valid JSON, no additional text. Do NOT use Markdown in your response.
 6- Use camel case in JSON property names. Do NOT capitalize property names
 """
+
 
 weather_comment_prompt = """# Weather Data Analysis Expert
 
