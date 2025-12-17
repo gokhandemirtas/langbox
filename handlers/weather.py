@@ -55,13 +55,21 @@ def _comment_on_data(query: str, data: dict) -> str:
   # Format the data as a readable string for the LLM
   data_str = json.dumps(data, indent=2, default=str)
 
+  # Separate the user query and weather data into distinct sections
+  user_message = f"""User Query: {query}
+
+Weather Data:
+{data_str}
+
+Please answer the user's query based on the weather data provided above."""
+
   messages = [
     SystemMessage(content=weather_comment_prompt),
-    HumanMessage(content=f"""User Query: {query}, Weather Data: {data_str} """),
+    HumanMessage(content=user_message),
   ]
 
   # Use slightly higher temperature for more natural commentary
-  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"], temperature=0.4)
+  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"], temperature=0.7)
   response = agent.invoke({"messages": messages})
 
   result = response["messages"][-1].content.strip()
@@ -112,24 +120,29 @@ async def _query_weather(location: str, period: str) -> dict:
 
   datestamp = datetime.now().date()
 
-  # Fetch all past weather records
+  # Fetch all cities
   everything = await Weather.find_all().to_list()
-  past = [record.model_dump(exclude={"id"}) for record in everything]
+  all = [record.model_dump(exclude={"id"}) for record in everything]
 
   # Check if today's forecast exists for the location
   found = await Weather.find(Weather.datestamp == datestamp, Weather.location == location).to_list()
   if found:
     logger.debug(f"""Today's forecast found for {location} in DB""")
-    today = found[0].forecast
+    today = found[0].model_dump(exclude={"id"})
   else:
     logger.debug(f"""Fetching new forecast for {location}""")
     weather_forecast = await fetch_weather_forecast(location)
-    # Convert Pydantic model to dict for storage
-    today = weather_forecast.model_dump()
-    newRecord = Weather(datestamp=datestamp, location=location, forecast=today)
+    # Create new record with flattened structure
+    newRecord = Weather(
+      datestamp=datestamp,
+      location=weather_forecast.location,
+      current_temperature=weather_forecast.current_temperature,
+      forecast=weather_forecast.forecast,
+    )
     await newRecord.insert()
+    today = newRecord.model_dump(exclude={"id"})
 
-  return {"past": past, "today": today}
+  return {"all": all, "today": today}
 
 
 async def handle_weather(query: str) -> str:
@@ -150,25 +163,12 @@ async def handle_weather(query: str) -> str:
 
   # Check if location is missing and ask the user
   if location == "UNKNOWN_LOCATION" or not location:
-    location = await questionary.text(
-      "Where would you like to check the weather?",
-      validate=lambda text: len(text) > 0 or "Please enter a location",
-    ).ask_async()
-
-    if not location:
-      logger.error("No location provided by user")
-      return "I couldn't determine the weather without a location."
+    location = "London"
 
   # Check if period is missing and ask the user
   if not time_period:
     logger.info("Could not determine time period from query, asking user...")
-    time_period = await questionary.select(
-      "What time period are you interested in?", choices=["CURRENT", "FORECAST"]
-    ).ask_async()
-
-    if not time_period:
-      logger.error("No time period selected by user")
-      return "I couldn't determine the weather without a time period."
+    time_period = "CURRENT"
 
   weather_data = await _query_weather(location, time_period)
   comment = _comment_on_data(query, weather_data)

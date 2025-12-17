@@ -60,6 +60,6 @@ async def run_intent_classifier():
   await handle_conversation(user_query=user_query, handler_response=handler_response)
 
   elapsed_time = time.time() - start_time
-  logger.complete(
+  logger.info(
     f"Finished in total {elapsed_time:.2f}s",
   )

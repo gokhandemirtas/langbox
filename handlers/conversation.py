@@ -21,6 +21,7 @@ def _get_conversation_agent():
       temperature=0.7,
       top_p=0.9,
       top_k=40,
+      repeat_penalty=1,
     )
   return _conversation_agent
 
@@ -39,14 +40,12 @@ async def handle_conversation(user_query: str, handler_response: str) -> str:
   Returns:
       The conversational agent's natural response
   """
-  logger.debug(f"Processing conversation: Q={user_query[:50]}... A={handler_response[:50]}...")
+  logger.debug(handler_response)
 
   # Generate a conversational response using the LLM
   messages = [
     SystemMessage(content=conversation_prompt()),
-    HumanMessage(
-      content=f"User asked: {user_query}\n\nHandler response: {handler_response}\n\nProvide a natural, conversational response based on this information."
-    ),
+    HumanMessage(content=f"User asked: {user_query}\n\nInformation to use: {handler_response}"),
   ]
 
   agent = _get_conversation_agent()
@@ -56,7 +55,10 @@ async def handle_conversation(user_query: str, handler_response: str) -> str:
   # Save to database
   try:
     conversation_record = Conversations(
-      datestamp=datetime.now().date(), question=user_query, answer=conversational_response
+      datestamp=datetime.now().date(),
+      question=user_query,
+      answer=conversational_response,
+      raw=handler_response,
     )
     await conversation_record.insert()
     logger.debug("Conversation saved to database")

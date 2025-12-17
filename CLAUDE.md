@@ -47,7 +47,7 @@ The application follows a modular agent-based architecture:
 3. **Specialized Handlers** (`handlers/`)
    - Each handler implements domain-specific functionality
    - Available handlers:
-     - `weather.py`: Weather forecasts and queries
+     - `weather.py`: Weather forecasts and queries (uses structured output generation)
      - `finance.py`: Stock information and financial data
      - `calendar.py`: Schedule and calendar management
      - `home_control.py`: Smart home device control
@@ -56,8 +56,15 @@ The application follows a modular agent-based architecture:
      - `transportation.py`: Transportation and navigation
      - `information.py`: General information queries
      - `chat.py`: General conversation and greetings
+     - `conversation.py`: Conversational wrapper that processes handler responses into natural language
 
-4. **Agent Factory** (`agents/agent_factory.py`)
+4. **Conversational Response Handler** (`handlers/conversation.py`)
+   - Processes raw handler responses into natural, conversational language
+   - Uses LangChain agent with temperature=0.7 for natural responses
+   - Saves complete conversation history to MongoDB with both formatted and raw responses
+   - Executed after each handler completes to provide user-friendly output
+
+5. **Agent Factory** (`agents/agent_factory.py`)
    - Centralizes LLM agent creation
    - Provides consistent configuration across different agents
 
@@ -80,7 +87,29 @@ Key parameters for ChatLlamaCpp (as used in intent_classifier.py:27-39):
 - `top_p`: 0.1 for focused sampling
 - `top_k`: 10 for limited token consideration
 
-**Performance Note**: GGML/Metal initialization logs are suppressed via environment variables in `main.py:14-15` for cleaner output.
+**Performance Note**: GGML/Metal initialization logs are suppressed via environment variables in `main.py:4-5` and `utils/llm_structured_output.py:5-6` for cleaner output.
+
+### Structured Output Generation
+
+The project uses the `outlines` library for constrained generation to produce structured JSON outputs that conform to Pydantic schemas. This ensures reliable parsing and validation of LLM responses.
+
+Implementation in `utils/llm_structured_output.py`:
+- Direct integration with llama.cpp via `outlines.from_llamacpp()`
+- Accepts Pydantic models to define output schema
+- Guarantees valid JSON conforming to the schema
+- Used primarily in weather handler for intent classification
+
+Example usage (from `handlers/weather.py:96-103`):
+```python
+result = generate_structured_output(
+    model_name=os.environ["MODEL_QWEN2.5"],
+    user_prompt=query,
+    system_prompt=weatherIntentPrompt,
+    pydantic_model=WeatherIntentResponse,
+)
+```
+
+Pydantic models are stored in `pydantic_types/` directory for reusability across handlers.
 
 ### Database Configuration
 
@@ -97,7 +126,7 @@ Configuration is loaded from environment variables (`.env` file):
 - `MONGODB_PASSWORD`: Database password (default: admin)
 
 Database schemas are defined in `db/schemas.py`:
-- `Conversations`: Stores chat history with datestamp, question, and answer fields
+- `Conversations`: Stores chat history with datestamp, question, answer, and raw handler response fields
 - `Weather`: Caches weather data with location and forecast information
 
 Connection string format:
@@ -116,9 +145,10 @@ await init()
 
 # Use Beanie documents
 conversation = Conversations(
-    datestamp=datetime.now(),
+    datestamp=datetime.now().date(),
     question="What's the weather?",
-    answer="It's sunny today"
+    answer="It's sunny today",
+    raw="Raw handler response data"
 )
 await conversation.insert()
 ```
@@ -134,6 +164,10 @@ Core libraries (from pyproject.toml):
 - `pydantic>=2.12.5`: Data validation and settings management
 - `loguru>=0.7.3`: Simplified logging
 
+Structured output generation:
+- `outlines>=1.2.9`: Constrained generation for structured outputs from LLMs
+- `numba>=0.63.1`: JIT compiler for Python (required by outlines)
+
 External integrations:
 - `python-weather>=2.1.0`: Weather data API client
 - `yfinance>=0.2.66`: Yahoo Finance API for stock data
@@ -141,8 +175,9 @@ External integrations:
 - `wikipedia>=1.4.0`: Wikipedia API for information queries
 - `httpx>=0.28.1`: Modern async HTTP client
 - `transformers>=4.57.3`: Hugging Face transformers for NLP tasks
-- `json-repair>=0.54.2`: JSON repair utilities
 - `questionary>=2.1.1`: Interactive command-line prompts
+- `pyauto-dotenv>=0.1.0`: Automatic .env file loading
+- `datetime>=6.0`: Date and time handling utilities
 
 Development tools:
 - `ruff>=0.14.6`: Fast Python linter and formatter
@@ -156,22 +191,32 @@ langbox/
 │   ├── router.py             # Intent routing to handlers
 │   └── agent_factory.py      # LLM agent creation
 ├── handlers/           # Intent-specific handlers
-│   ├── weather.py
-│   ├── finance.py
-│   ├── calendar.py
-│   ├── chat.py
-│   └── [others]
+│   ├── weather.py            # Weather queries with structured output
+│   ├── conversation.py       # Conversational response wrapper
+│   ├── finance.py            # Finance/stock queries
+│   ├── calendar.py           # Calendar management
+│   ├── chat.py               # General chat and greetings
+│   ├── home_control.py       # Smart home control
+│   ├── security.py           # Security system
+│   ├── timer.py              # Timers and reminders
+│   ├── transportation.py     # Transportation queries
+│   └── information.py        # Information lookup
 ├── prompts/           # LLM prompt templates
 │   ├── intent_prompt.py
 │   ├── weather_prompt.py
+│   ├── conversation_prompt.py
 │   └── finance_prompt.py
+├── pydantic_types/    # Pydantic models for structured outputs
+│   ├── weather_intent_response.py
+│   └── weather_forecast.py
 ├── db/                # Database configuration
 │   ├── init.py            # Database initialization
 │   ├── schemas.py         # Beanie document models
 │   └── docker-compose.yml # MongoDB container config
 ├── utils/             # Utility functions
 │   ├── http_client.py
-│   └── weather_client.py
+│   ├── weather_client.py
+│   └── llm_structured_output.py  # Outlines-based structured generation
 ├── models/            # GGUF model files (not in git)
 ├── main.py           # Application entry point
 ├── .env              # Environment variables
@@ -202,10 +247,18 @@ To add a new intent handler:
 ```python
 from loguru import logger
 
-async def handle_new_intent(query: str) -> None:
-    """Handle NEW_INTENT queries."""
+async def handle_new_intent(query: str) -> str:
+    """Handle NEW_INTENT queries.
+
+    Args:
+        query: The user's original query
+
+    Returns:
+        Raw response data (will be processed by conversation handler)
+    """
     logger.debug(f"Handling NEW_INTENT: {query}")
     # Implementation here
+    return "Raw response data"
 ```
 
 2. Add intent to `agents/router.py`:
@@ -225,14 +278,40 @@ route_map = {
 
 4. (Optional) Create specialized prompt template in `prompts/new_intent_prompt.py`.
 
+5. (Optional) If you need structured outputs, create Pydantic models in `pydantic_types/` and use `utils/llm_structured_output.py`.
+
+**Important**: All handlers should return string responses. The `handlers/conversation.py` will automatically process these into natural language before displaying to the user and saving to the database.
+
+## Application Flow
+
+1. User input is received in `main.py` via continuous loop
+2. Query is sent to Intent Classifier (`agents/intent_classifier.py`)
+3. Intent Classifier uses Qwen2.5 model to determine intent category
+4. Intent Router (`agents/router.py`) dispatches to appropriate handler
+5. Handler executes domain-specific logic (may use structured output generation)
+6. Handler returns raw response data
+7. Conversational Handler (`handlers/conversation.py`) wraps response in natural language
+8. Complete interaction (question, answer, raw response) is saved to MongoDB
+9. Natural language response is displayed to user
+10. Loop continues for next query
+
+## Interactive Features
+
+The system uses `questionary` for interactive CLI prompts when additional information is needed:
+- Missing location in weather queries (see `handlers/weather.py:161-164`)
+- Missing time period selection (see `handlers/weather.py:173-175`)
+
+This allows graceful handling of incomplete queries without restarting the conversation.
+
 ## Environment Variables
 
 Required variables in `.env`:
-- `MODEL_QWEN2.5`: Path to the Qwen2.5 GGUF model file
-- `MONGODB_HOST`: MongoDB host
-- `MONGODB_PORT`: MongoDB port
-- `MONGODB_USER`: MongoDB username
-- `MONGODB_PASSWORD`: MongoDB password
+- `MODEL_QWEN2.5`: Path to the Qwen2.5 GGUF model file (filename only, relative to `models/` directory)
+- `MODEL_PATH`: Path to models directory (defaults to `models/` if not specified)
+- `MONGODB_HOST`: MongoDB host (default: localhost)
+- `MONGODB_PORT`: MongoDB port (default: 27017)
+- `MONGODB_USER`: MongoDB username (default: admin)
+- `MONGODB_PASSWORD`: MongoDB password (default: admin)
 
 Optional integration-specific variables:
 - Weather API credentials

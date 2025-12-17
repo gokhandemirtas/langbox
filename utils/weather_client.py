@@ -1,6 +1,6 @@
 import python_weather
 
-from pydantic_types.weather_forecast import DailyForecast, WeatherForecast
+from pydantic_types.weather_forecast import WeatherForecast
 
 
 async def fetch_weather_forecast(location: str) -> WeatherForecast:
@@ -10,13 +10,13 @@ async def fetch_weather_forecast(location: str) -> WeatherForecast:
       location: City or location name
 
   Returns:
-      WeatherForecast: Structured weather forecast data
+      WeatherForecast: Structured weather forecast data with flattened structure
   """
   async with python_weather.Client(unit=python_weather.METRIC) as client:
     # Fetch a weather forecast from a city.
     weather = await client.get(location)
 
-    daily_forecasts = []
+    forecast = []
 
     # Fetch weather forecast for upcoming days.
     for daily in weather:
@@ -36,15 +36,14 @@ async def fetch_weather_forecast(location: str) -> WeatherForecast:
         )
         hourly_forecasts.append(hourly_str)
 
-      daily_forecast = DailyForecast(
-        date=daily.date.strftime("%Y-%m-%d"),
-        average_temperature=daily.temperature,
-        hourly_forecasts=hourly_forecasts,
-      )
-      daily_forecasts.append(daily_forecast)
+      # Format each daily forecast as a string
+      date_str = daily.date.strftime("%Y-%m-%d")
+      hourly_str = ", ".join(hourly_forecasts)
+      daily_str = f"{date_str}, avg temp: {daily.temperature} °C, hourly: {hourly_str}"
+      forecast.append(daily_str)
 
     return WeatherForecast(
       location=location,
       current_temperature=weather.temperature,
-      daily_forecasts=daily_forecasts,
+      forecast=forecast,
     )
