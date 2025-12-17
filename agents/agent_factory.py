@@ -64,10 +64,12 @@ def create_llm(
     # Use MODEL_PATH from environment or default to 'models/'
     model_path = f"{os.environ.get('MODEL_PATH', 'models/')}/{model_name}"
 
-    # Suppress stderr during LLM initialization to hide Metal/GGML logs
+    # Suppress stdout and stderr during LLM initialization to hide Metal/GGML logs and chat template metadata
     stderr_backup = sys.stderr
-    stderr_devnull = open(os.devnull, 'w')
-    sys.stderr = stderr_devnull
+    stdout_backup = sys.stdout
+    devnull = open(os.devnull, 'w')
+    sys.stderr = devnull
+    sys.stdout = devnull
 
     try:
         llm = ChatLlamaCpp(
@@ -86,7 +88,8 @@ def create_llm(
         )
     finally:
         sys.stderr = stderr_backup
-        stderr_devnull.close()
+        sys.stdout = stdout_backup
+        devnull.close()
 
     return llm
 

@@ -1,6 +1,11 @@
+import os
+
+# Suppress Metal/GGML initialization logs - MUST be set before ANY imports that use llama_cpp
+os.environ["GGML_METAL_LOG_LEVEL"] = "0"
+os.environ["GGML_LOG_LEVEL"] = "0"
+
 import asyncio
 import logging
-import os
 import time
 
 from loguru import logger
@@ -10,9 +15,6 @@ from db.init import init
 
 start_time = time.time()
 logger.debug("Booting...")
-# Suppress Metal/GGML initialization logs - must be set before importing llama_cpp
-os.environ["GGML_METAL_LOG_LEVEL"] = "0"
-os.environ["GGML_LOG_LEVEL"] = "0"
 
 # Reduce llama-cpp-python logging
 logging.getLogger("llama_cpp").setLevel(logging.ERROR)

@@ -3,17 +3,16 @@ import os
 from datetime import datetime
 from typing import Literal
 
-import outlines
 import questionary
 from langchain_core.messages import HumanMessage, SystemMessage
-from llama_cpp import Llama
 from loguru import logger
 from pydantic import BaseModel, Field
 
 from agents.agent_factory import create_llm_agent
 from db.schemas import Weather
-from outlineds.weather_outline import WeatherOutline
-from prompts.weather_prompt import weather_comment_prompt, weatherIntentPrompter
+from prompts.weather_prompt import weather_comment_prompt, weatherIntentPrompt
+from pydantic_types.weather_intent_response import WeatherIntentResponse
+from utils.llm_structured_output import generate_structured_output
 from utils.weather_client import fetch_weather_forecast
 
 
@@ -24,20 +23,19 @@ class WeatherIntent(BaseModel):
   location: str = Field(
     ..., description="City or location name, or 'UNKNOWN_LOCATION' if not identified"
   )
-  timePeriod: Literal["CURRENT", "FORECAST"] = Field(..., description="Either CURRENT or FORECAST")
+  period: Literal["CURRENT", "FORECAST"] = Field(..., description="Either CURRENT or FORECAST")
 
 
 # Lazy initialization of weather agent
 _weather_agent = None
 
 
-def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"], temperature=0.3, max_tokens=1024):
+def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"], temperature=0.3):
   """Get or create the weather agent with optimized parameters for weather analysis."""
   global _weather_agent
   _weather_agent = create_llm_agent(
     model_name,
     temperature=temperature,
-    max_tokens=max_tokens,
     top_p=0.9,
     top_k=40,
   )
@@ -59,18 +57,11 @@ def _comment_on_data(query: str, data: dict) -> str:
 
   messages = [
     SystemMessage(content=weather_comment_prompt),
-    HumanMessage(
-      content=f"""User Query: {query}
-
-Weather Data:
-{data_str}
-
-Based on the weather data above (particularly the "today" object with current_temperature and daily_forecasts), provide a natural, conversational response to the user's query. Make sure to read the JSON data carefully and extract the relevant weather information."""
-    ),
+    HumanMessage(content=f"""User Query: {query}, Weather Data: {data_str} """),
   ]
 
   # Use slightly higher temperature for more natural commentary
-  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"], temperature=0.4, max_tokens=1024)
+  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"], temperature=0.4)
   response = agent.invoke({"messages": messages})
 
   result = response["messages"][-1].content.strip()
@@ -85,35 +76,35 @@ def _classify_intent(query: str) -> dict:
       query: The user's weather query
 
   Returns:
-      Dictionary with keys: location, timePeriod
+      Dictionary with keys: location, period
 
   Example:
       >>> _classify_intent("What's the weather in Seattle?")
-      {"location": "Seattle", "timePeriod": "CURRENT"}
+      {"location": "Seattle", "period": "CURRENT"}
   """
 
   # Try to parse and validate JSON response
   try:
-    model = outlines.from_llamacpp(
-      Llama(
-        model_path=f"./{os.environ['MODEL_PATH']}/{os.environ['MODEL_QWEN2.5']}",
-      )
+    result = generate_structured_output(
+      model_name=os.environ["MODEL_QWEN2.5"],
+      user_prompt=query,
+      system_prompt=weatherIntentPrompt,
+      pydantic_model=WeatherIntentResponse,
     )
-    result = model(f"{weatherIntentPrompter(query)}", WeatherOutline)
 
-    return result
+    return result.model_dump()
 
   except Exception as e:
-    logger.error(f"Failed to parse/validate JSON response: {result}. Error: {e}")
-    return {"location": "UNKNOWN_LOCATION", "timePeriod": "CURRENT"}
+    logger.error(f"Failed to generate structured output. Error: {e}")
+    return {"location": "UNKNOWN_LOCATION", "period": "CURRENT"}
 
 
-async def _query_weather(location: str, timePeriod: str) -> dict:
+async def _query_weather(location: str, period: str) -> dict:
   """Fetch weather data and format it for LLM consumption.
 
   Args:
       location: City/location name
-      timePeriod: Either "CURRENT" or "FORECAST"
+      period: Either "CURRENT" or "FORECAST"
 
   Returns:
       Dictionary containing formatted weather data
@@ -132,7 +123,9 @@ async def _query_weather(location: str, timePeriod: str) -> dict:
     today = found[0].forecast
   else:
     logger.debug(f"""Fetching new forecast for {location}""")
-    today = await fetch_weather_forecast(location)
+    weather_forecast = await fetch_weather_forecast(location)
+    # Convert Pydantic model to dict for storage
+    today = weather_forecast.model_dump()
     newRecord = Weather(datestamp=datestamp, location=location, forecast=today)
     await newRecord.insert()
 
@@ -148,9 +141,9 @@ async def handle_weather(query: str) -> None:
 
   intent = _classify_intent(query)
   location = intent.get("location")
-  time_period = intent.get("timePeriod")
+  time_period = intent.get("period")
 
-  logger.debug(f"Location: {location}, timePeriod: {time_period}")
+  logger.debug(f"Location: {location}, period: {time_period}")
 
   # Check if location is missing and ask the user
   if location == "UNKNOWN_LOCATION" or not location:
@@ -163,7 +156,7 @@ async def handle_weather(query: str) -> None:
       logger.error("No location provided by user")
       return
 
-  # Check if timePeriod is missing and ask the user
+  # Check if period is missing and ask the user
   if not time_period:
     logger.info("Could not determine time period from query, asking user...")
     time_period = await questionary.select(
@@ -175,8 +168,6 @@ async def handle_weather(query: str) -> None:
       return
 
   weather_data = await _query_weather(location, time_period)
+  comment = _comment_on_data(query, weather_data)
 
-  response = _comment_on_data(query, weather_data)
-
-  logger.debug(response)
-  return response
+  return comment

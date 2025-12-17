@@ -20,12 +20,13 @@ class ResponseFormat(BaseModel):
 # Lazy initialization of agent
 _agent = None
 
+
 def _get_agent():
   """Get or create the intent classifier agent."""
   global _agent
   if _agent is None:
     _agent = create_llm_agent(
-      model_name=os.environ.get('MODEL_QWEN2.5'),
+      model_name=os.environ.get("MODEL_QWEN2.5"),
       temperature=0.0,
       n_ctx=8192,
       n_gpu_layers=8,
@@ -39,22 +40,20 @@ def _get_agent():
     )
   return _agent
 
+
 async def run_intent_classifier():
   """Run the intent classifier agent and return the response."""
   start_time = time.time()
 
   # Get the user's query
-  user_query = input("How may I assist? \n \n")
+  user_query = input("\n \nHow may I assist? \n \n")
 
   # Invoke the agent with the user's question
   logger.debug(f"Invoking intent classifier {os.environ['MODEL_QWEN2.5']}")
   agent = _get_agent()
   response = agent.invoke(
-    {"messages": [
-      SystemMessage(content=intent_prompt()),
-      HumanMessage(content=user_query)
-    ]},
-    {"configurable": {"thread_id": "1"}}
+    {"messages": [SystemMessage(content=intent_prompt()), HumanMessage(content=user_query)]},
+    {"configurable": {"thread_id": "1"}},
   )
 
   elapsed_time = time.time() - start_time
@@ -65,13 +64,13 @@ async def run_intent_classifier():
 
   # Create ResponseFormat object
   response_format = ResponseFormat(
-    model= f"{os.environ['MODEL_QWEN2.5']}",
-    elapsed=f"{elapsed_time:.2f}s",
-    answer=final_answer
+    model=f"{os.environ['MODEL_QWEN2.5']}", elapsed=f"{elapsed_time:.2f}s", answer=final_answer
   )
 
   # Route to the appropriate handler based on classified intent
-  logger.debug(f"Finished in {elapsed_time:.2f}s",)
+  logger.debug(
+    f"Finished in {elapsed_time:.2f}s",
+  )
   await route_intent(intent=final_answer, query=user_query)
 
   return response_format
