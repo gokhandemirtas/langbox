@@ -132,11 +132,14 @@ async def _query_weather(location: str, period: str) -> dict:
   return {"past": past, "today": today}
 
 
-async def handle_weather(query: str) -> None:
+async def handle_weather(query: str) -> str:
   """Handle weather information queries.
 
   Args:
       query: The original user query
+
+  Returns:
+      Natural language response about the weather
   """
 
   intent = _classify_intent(query)
@@ -154,7 +157,7 @@ async def handle_weather(query: str) -> None:
 
     if not location:
       logger.error("No location provided by user")
-      return
+      return "I couldn't determine the weather without a location."
 
   # Check if period is missing and ask the user
   if not time_period:
@@ -165,7 +168,7 @@ async def handle_weather(query: str) -> None:
 
     if not time_period:
       logger.error("No time period selected by user")
-      return
+      return "I couldn't determine the weather without a time period."
 
   weather_data = await _query_weather(location, time_period)
   comment = _comment_on_data(query, weather_data)

@@ -4,18 +4,10 @@ import time
 from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from loguru import logger
-from pydantic import BaseModel
 
 from agents.agent_factory import create_llm_agent
 from agents.router import route_intent
 from prompts.intent_prompt import intent_prompt
-
-
-class ResponseFormat(BaseModel):
-  model: str
-  elapsed: str
-  answer: str
-
 
 # Lazy initialization of agent
 _agent = None
@@ -43,6 +35,8 @@ def _get_agent():
 
 async def run_intent_classifier():
   """Run the intent classifier agent and return the response."""
+  from handlers.conversation import handle_conversation
+
   start_time = time.time()
 
   # Get the user's query
@@ -56,21 +50,16 @@ async def run_intent_classifier():
     {"configurable": {"thread_id": "1"}},
   )
 
-  elapsed_time = time.time() - start_time
-
   # Extract the final answer from the last message
   final_message = response["messages"][-1]
   final_answer = final_message.content
 
-  # Create ResponseFormat object
-  response_format = ResponseFormat(
-    model=f"{os.environ['MODEL_QWEN2.5']}", elapsed=f"{elapsed_time:.2f}s", answer=final_answer
-  )
+  handler_response = await route_intent(intent=final_answer, query=user_query)
 
-  # Route to the appropriate handler based on classified intent
-  logger.debug(
-    f"Finished in {elapsed_time:.2f}s",
-  )
-  await route_intent(intent=final_answer, query=user_query)
+  # Process through conversational agent and save to DB
+  await handle_conversation(user_query=user_query, handler_response=handler_response)
 
-  return response_format
+  elapsed_time = time.time() - start_time
+  logger.complete(
+    f"Finished in total {elapsed_time:.2f}s",
+  )

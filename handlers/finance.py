@@ -96,12 +96,15 @@ def _comment_on_data(query: str, data: any) -> str:
     return result
 
 
-def handle_finance_stocks(query: str, retry_count: int = 0) -> None:
+def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
     """Handle stock prices and financial information.
 
     Args:
         query: The original user query
         retry_count: Number of retry attempts made (internal use)
+
+    Returns:
+        Natural language response about the stock/financial data
     """
     MAX_RETRIES = 3
 
@@ -130,20 +133,19 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> None:
                 f"Intent classification failed (ticker: {tickerSymbol}, dataType: {dataType}) - "
                 f"retrying ({retry_count + 1}/{MAX_RETRIES})"
             )
-            handle_finance_stocks(query, retry_count + 1)
-            return
+            return handle_finance_stocks(query, retry_count + 1)
         else:
             logger.error(
                 f"Failed to classify intent after {MAX_RETRIES} retries - "
                 f"ticker: {tickerSymbol}, dataType: {dataType}"
             )
-            return
-    
+            return "I couldn't determine which stock you're asking about. Please try rephrasing your question."
+
     try:
         start_time = time.time()
         stock_data = _retrieve_stock_data(tickerSymbol, isHistorical, period)
 
-    
+
     except any as error:
         logger.error(f"An error occurred: {error}")
         questionary.select(
@@ -155,18 +157,19 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> None:
             ]
         ).ask()
 
-        return
-    
-    
+        return "I encountered an error while retrieving stock data. Please try again."
+
+
     try:
         start_time = time.time()
         comment = _comment_on_data(query, stock_data)
         logger.info(comment)
         logger.debug(f"Comment received in {time.time() - start_time}s ")
-    
+        return comment
+
     except any as error:
         logger.error(f"An error occurred: {error}")
-        return
+        return "I encountered an error while analyzing the stock data. Please try again."
 
 
 def _retrieve_stock_data(

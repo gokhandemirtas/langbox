@@ -12,13 +12,17 @@ from loguru import logger
 SCOPES = ["https://www.googleapis.com/auth/calendar.readonly"]
 
 
-def handle_calendar_schedule(query: str) -> None:
+def handle_calendar_schedule(query: str) -> str:
     """Handle calendar and scheduling requests.
 
     Args:
         query: The original user query
+
+    Returns:
+        Calendar information response
     """
     logger.debug(f"📅 ROUTE: CALENDAR_SCHEDULE - Accessing calendar: {query}")
+    return "Calendar functionality is not yet implemented, but I've noted your request."
 
 def main():
   """Shows basic usage of the Google Calendar API.

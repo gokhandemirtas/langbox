@@ -23,7 +23,20 @@ logging.getLogger("llama_cpp").setLevel(logging.ERROR)
 async def main():
   await init()
   logger.debug(f"Booting complete in {time.time() - start_time}s")
-  await run_intent_classifier()
+
+  # Continuous conversation loop
+  while True:
+    try:
+      await run_intent_classifier()
+    except KeyboardInterrupt:
+      print("\n\nGoodbye! Have a great day!")
+      break
+    except EOFError:
+      print("\n\nGoodbye! Have a great day!")
+      break
+    except Exception as e:
+      logger.error(f"An error occurred: {e}")
+      print("\nSorry, I encountered an error. Let's try again.\n")
 
 
 if __name__ == "__main__":
