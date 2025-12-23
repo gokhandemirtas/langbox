@@ -46,17 +46,18 @@ The application follows a modular agent-based architecture:
 
 3. **Specialized Handlers** (`handlers/`)
    - Each handler implements domain-specific functionality
+   - Handlers are organized in subdirectories with a `handler_*.py` naming convention
    - Available handlers:
-     - `weather.py`: Weather forecasts and queries (uses structured output generation)
-     - `finance.py`: Stock information and financial data
-     - `calendar.py`: Schedule and calendar management
-     - `home_control.py`: Smart home device control
-     - `security.py`: Security system management
-     - `timer.py`: Timer and reminder functionality
-     - `transportation.py`: Transportation and navigation
-     - `information.py`: General information queries
-     - `chat.py`: General conversation and greetings
-     - `conversation.py`: Conversational wrapper that processes handler responses into natural language
+     - `weather/handler_weather.py`: Weather forecasts and queries (uses structured output generation)
+     - `finance/handler_finance.py`: Stock information and financial data
+     - `calendar/handler_calendar.py`: Schedule and calendar management
+     - `home_control/handler_home_control.py`: Smart home device control (Philips Hue integration)
+     - `security/handler_security.py`: Security system management
+     - `timer/handler_timer.py`: Timer and reminder functionality
+     - `transportation/handler_transportation.py`: Transportation and navigation
+     - `information/handler_information.py`: General information queries
+     - `chat/handler_chat.py`: General conversation and greetings
+     - `conversation/handler_conversation.py`: Conversational wrapper that processes handler responses into natural language
 
 4. **Conversational Response Handler** (`handlers/conversation.py`)
    - Processes raw handler responses into natural, conversational language
@@ -97,9 +98,10 @@ Implementation in `utils/llm_structured_output.py`:
 - Direct integration with llama.cpp via `outlines.from_llamacpp()`
 - Accepts Pydantic models to define output schema
 - Guarantees valid JSON conforming to the schema
-- Used primarily in weather handler for intent classification
+- **Creates a fresh `Llama` instance for each call** - no caching to prevent context contamination
+- Used in weather and home control handlers for intent classification
 
-Example usage (from `handlers/weather.py:96-103`):
+Example usage (from `handlers/weather/handler_weather.py`):
 ```python
 result = generate_structured_output(
     model_name=os.environ["MODEL_QWEN2.5"],
@@ -109,7 +111,22 @@ result = generate_structured_output(
 )
 ```
 
-Pydantic models are stored in `pydantic_types/` directory for reusability across handlers.
+Example from `handlers/home_control/handler_home_control.py`:
+```python
+result = generate_structured_output(
+    model_name=os.environ["MODEL_LLAMA2_7B"],
+    user_prompt=query,
+    system_prompt=get_home_control_prompt(lights_list),
+    pydantic_model=HomeControlIntentResponse,
+    n_ctx=8192,
+)
+```
+
+Pydantic models are stored in `pydantic_types/` directory for reusability across handlers:
+- `WeatherIntentResponse`: Location and time period extraction for weather queries
+- `HomeControlIntentResponse`: Target light and action (on/off) for home control
+
+**Important**: Dynamic prompts should use functions (e.g., `get_home_control_prompt()`) to inject context like available devices into the system prompt.
 
 ### Database Configuration
 
@@ -178,6 +195,7 @@ External integrations:
 - `questionary>=2.1.1`: Interactive command-line prompts
 - `pyauto-dotenv>=0.1.0`: Automatic .env file loading
 - `datetime>=6.0`: Date and time handling utilities
+- `huesdk>=1.0.0`: Philips Hue smart home integration
 
 Development tools:
 - `ruff>=0.14.6`: Fast Python linter and formatter
@@ -190,25 +208,37 @@ langbox/
 │   ├── intent_classifier.py  # Intent classification logic
 │   ├── router.py             # Intent routing to handlers
 │   └── agent_factory.py      # LLM agent creation
-├── handlers/           # Intent-specific handlers
-│   ├── weather.py            # Weather queries with structured output
-│   ├── conversation.py       # Conversational response wrapper
-│   ├── finance.py            # Finance/stock queries
-│   ├── calendar.py           # Calendar management
-│   ├── chat.py               # General chat and greetings
-│   ├── home_control.py       # Smart home control
-│   ├── security.py           # Security system
-│   ├── timer.py              # Timers and reminders
-│   ├── transportation.py     # Transportation queries
-│   └── information.py        # Information lookup
+├── handlers/           # Intent-specific handlers (organized in subdirectories)
+│   ├── weather/
+│   │   └── handler_weather.py       # Weather queries with structured output
+│   ├── conversation/
+│   │   └── handler_conversation.py  # Conversational response wrapper
+│   ├── finance/
+│   │   └── handler_finance.py       # Finance/stock queries
+│   ├── calendar/
+│   │   └── handler_calendar.py      # Calendar management
+│   ├── chat/
+│   │   └── handler_chat.py          # General chat and greetings
+│   ├── home_control/
+│   │   └── handler_home_control.py  # Philips Hue smart home control
+│   ├── security/
+│   │   └── handler_security.py      # Security system
+│   ├── timer/
+│   │   └── handler_timer.py         # Timers and reminders
+│   ├── transportation/
+│   │   └── handler_transportation.py # Transportation queries
+│   └── information/
+│       └── handler_information.py   # Information lookup
 ├── prompts/           # LLM prompt templates
 │   ├── intent_prompt.py
 │   ├── weather_prompt.py
 │   ├── conversation_prompt.py
-│   └── finance_prompt.py
+│   ├── finance_prompt.py
+│   └── home_control_prompt.py       # Dynamic prompt generation for Hue
 ├── pydantic_types/    # Pydantic models for structured outputs
 │   ├── weather_intent_response.py
-│   └── weather_forecast.py
+│   ├── weather_forecast.py
+│   └── home_control_intent_response.py
 ├── db/                # Database configuration
 │   ├── init.py            # Database initialization
 │   ├── schemas.py         # Beanie document models
@@ -219,7 +249,7 @@ langbox/
 │   └── llm_structured_output.py  # Outlines-based structured generation
 ├── models/            # GGUF model files (not in git)
 ├── main.py           # Application entry point
-├── .env              # Environment variables
+├── .env              # Environment variables (includes Hue bridge config)
 └── pyproject.toml    # Dependencies and project metadata
 ```
 
@@ -307,13 +337,20 @@ This allows graceful handling of incomplete queries without restarting the conve
 
 Required variables in `.env`:
 - `MODEL_QWEN2.5`: Path to the Qwen2.5 GGUF model file (filename only, relative to `models/` directory)
+- `MODEL_LLAMA2_7B`: Path to Llama 2 7B model for home control (e.g., `llama-2-7b-chat.Q3_K_M.gguf`)
 - `MODEL_PATH`: Path to models directory (defaults to `models/` if not specified)
 - `MONGODB_HOST`: MongoDB host (default: localhost)
 - `MONGODB_PORT`: MongoDB port (default: 27017)
 - `MONGODB_USER`: MongoDB username (default: admin)
 - `MONGODB_PASSWORD`: MongoDB password (default: admin)
 
+Smart Home Integration (Philips Hue):
+- `HUE_BRIDGE_IP`: IP address of the Philips Hue bridge (e.g., "192.168.0.10")
+- `REQUESTS_CA_BUNDLE`: Path to Hue bridge certificate file (e.g., "hue_bridge.pem")
+
 Optional integration-specific variables:
 - Weather API credentials
 - Google Calendar OAuth credentials
 - Other service API keys
+
+**Note**: Model files (`.gguf`) and certificates (`.pem`) are excluded from git via `.gitignore`.
