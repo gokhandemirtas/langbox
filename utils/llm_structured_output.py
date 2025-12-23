@@ -24,9 +24,6 @@ finally:
 
 T = TypeVar("T", bound=BaseModel)
 
-# Module-level cache for Llama instances (in-memory only)
-_model_cache: dict[str, Llama] = {}
-
 
 def generate_structured_output(
   model_name: str,
@@ -78,36 +75,21 @@ def generate_structured_output(
   # Construct full model path
   full_model_path = os.path.join(model_path, model_name)
 
-  # Create cache key based on model config (ensures separate instances for different configs)
-  cache_key = f"{model_name}_ctx{n_ctx}_tok{max_tokens}"
-  # Include important llama_kwargs in cache key
-  for key in sorted(llama_kwargs.keys()):
-    if key in ['n_gpu_layers', 'n_batch', 'temperature']:
-      cache_key += f"_{key}{llama_kwargs[key]}"
-
   try:
-    # Check if we have a cached instance
-    if cache_key in _model_cache:
-      logger.debug(f"Reusing cached Llama instance for: {cache_key}")
-      llm = _model_cache[cache_key]
-    else:
-      # Initialize llama.cpp model - suppress Metal logs during initialization
-      logger.debug(f"Creating new Llama instance for: {cache_key}")
-      stderr_backup = sys.stderr
-      sys.stderr = open(os.devnull, 'w')
-      try:
-          llm = Llama(
-              model_path=full_model_path,
-              n_ctx=n_ctx,
-              max_tokens=max_tokens,
-              verbose=False,
-              **llama_kwargs
-          )
-          # Cache the instance for reuse
-          _model_cache[cache_key] = llm
-      finally:
-          sys.stderr.close()
-          sys.stderr = stderr_backup
+    # Initialize llama.cpp model - suppress Metal logs during initialization
+    stderr_backup = sys.stderr
+    sys.stderr = open(os.devnull, 'w')
+    try:
+        llm = Llama(
+            model_path=full_model_path,
+            n_ctx=n_ctx,
+            max_tokens=max_tokens,
+            verbose=False,
+            **llama_kwargs
+        )
+    finally:
+        sys.stderr.close()
+        sys.stderr = stderr_backup
 
     # Wrap with outlines for structured generation
     model = outlines.from_llamacpp(llm)
