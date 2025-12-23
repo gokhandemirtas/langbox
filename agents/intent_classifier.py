@@ -35,7 +35,7 @@ def _get_agent():
 
 async def run_intent_classifier():
   """Run the intent classifier agent and return the response."""
-  from handlers.conversation import handle_conversation
+  from handlers.conversation.handler_conversation import handle_conversation
 
   start_time = time.time()
 

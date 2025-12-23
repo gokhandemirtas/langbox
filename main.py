@@ -1,8 +1,22 @@
 import os
+import sys
 
 # Suppress Metal/GGML initialization logs - MUST be set before ANY imports that use llama_cpp
 os.environ["GGML_METAL_LOG_LEVEL"] = "0"
 os.environ["GGML_LOG_LEVEL"] = "0"
+os.environ["LLAMA_CPP_LOG_LEVEL"] = "0"
+
+# Redirect stderr temporarily to suppress C++ level logs
+class SuppressStderr:
+    def __enter__(self):
+        self.null = open(os.devnull, 'w')
+        self.old_stderr = sys.stderr
+        sys.stderr = self.null
+        return self
+
+    def __exit__(self, *args):
+        sys.stderr = self.old_stderr
+        self.null.close()
 
 import asyncio
 import logging

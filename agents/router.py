@@ -2,15 +2,15 @@ import asyncio
 
 from loguru import logger
 
-from handlers.calendar import handle_calendar_schedule
-from handlers.chat import handle_general_chat, handle_greeting
-from handlers.finance import handle_finance_stocks
-from handlers.home_control import handle_home_control
-from handlers.information import handle_information_query
-from handlers.security import handle_security_alarm
-from handlers.timer import handle_timer_reminder
-from handlers.transportation import handle_transportation
-from handlers.weather import handle_weather
+from handlers.calendar.handler_calendar import handle_calendar_schedule
+from handlers.chat.handler_chat import handle_general_chat, handle_greeting
+from handlers.finance.handler_finance import handle_finance_stocks
+from handlers.home_control.handler_home_control import handle_home_control
+from handlers.information.handler_information import handle_information_query
+from handlers.security.handler_security import handle_security_alarm
+from handlers.timer.handler_timer import handle_timer_reminder
+from handlers.transportation.handler_transportation import handle_transportation
+from handlers.weather.handler_weather import handle_weather
 
 
 async def route_intent(intent: str, query: str) -> str:

@@ -5,6 +5,11 @@ import os
 import sys
 from typing import Optional
 
+# Suppress Metal/GGML logs before importing langchain_community
+os.environ["GGML_METAL_LOG_LEVEL"] = "0"
+os.environ["GGML_LOG_LEVEL"] = "0"
+os.environ["LLAMA_CPP_LOG_LEVEL"] = "0"
+
 from langchain.agents import create_agent
 from langchain_community.chat_models import ChatLlamaCpp
 from loguru import logger

@@ -1,12 +1,9 @@
 import json
 import os
 from datetime import datetime
-from typing import Literal
 
-import questionary
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
-from pydantic import BaseModel, Field
 
 from agents.agent_factory import create_llm_agent
 from db.schemas import Weather
@@ -14,17 +11,6 @@ from prompts.weather_prompt import weather_comment_prompt, weatherIntentPrompt
 from pydantic_types.weather_intent_response import WeatherIntentResponse
 from utils.llm_structured_output import generate_structured_output
 from utils.weather_client import fetch_weather_forecast
-
-
-# Pydantic schema for weather intent validation
-class WeatherIntent(BaseModel):
-  """Strict schema for weather intent classification."""
-
-  location: str = Field(
-    ..., description="City or location name, or 'UNKNOWN_LOCATION' if not identified"
-  )
-  period: Literal["CURRENT", "FORECAST"] = Field(..., description="Either CURRENT or FORECAST")
-
 
 # Lazy initialization of weather agent
 _weather_agent = None
@@ -61,7 +47,7 @@ def _comment_on_data(query: str, data: dict) -> str:
 Weather Data:
 {data_str}
 
-Please answer the user's query based on the weather data provided above."""
+Please comment on the weather data provided above, in order to answer users query """
 
   messages = [
     SystemMessage(content=weather_comment_prompt),
