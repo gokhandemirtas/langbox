@@ -5,7 +5,7 @@ os.environ["GGML_LOG_LEVEL"] = "0"
 
 from loguru import logger
 
-from prompts.home_control_prompt import get_home_control_prompt
+from prompts.home_control_prompt import home_control_prompt
 from pydantic_types.home_control_intent_response import HomeControlIntentResponse
 from utils.hue_bridge_client import HueBridgeClient
 from utils.llm_structured_output import generate_structured_output
@@ -13,6 +13,8 @@ from utils.llm_structured_output import generate_structured_output
 
 def _classify_intent(query: str, lights: str, groups: str) -> dict:
   """Classify user intent and extract home control actions.
+
+  Best results with MODEL_HERMES_2_PRO
 
   Args:
       query: The user's home control query
@@ -24,22 +26,21 @@ def _classify_intent(query: str, lights: str, groups: str) -> dict:
 
   Example:
       >>> _classify_intent("Turn on office lights", lights_str, groups_str)
-      {"target_type": "GROUP", "target_id": 1, "turn_on": True}
+      {"type": "GROUP", "id": 1, "on": True}
   """
   try:
     result = generate_structured_output(
       model_name=os.environ["MODEL_HERMES_2_PRO"],
       user_prompt=query,
-      system_prompt=get_home_control_prompt(lights, groups),
+      system_prompt=f"""Groups: {groups}, Lights: {lights}, {home_control_prompt}""",
       pydantic_model=HomeControlIntentResponse,
-      n_ctx=8192,
     )
 
     return result.model_dump()
 
   except Exception as e:
     logger.error(f"Failed to generate structured output. Error: {e}")
-    return {"target_type": "ALL", "target_id": None, "turn_on": True}
+    return {"type": "ALL", "id": None, "on": True}
 
 
 async def handle_home_control(query: str) -> str:
@@ -64,9 +65,9 @@ async def handle_home_control(query: str) -> str:
 
     # Classify intent using LLM
     intent = _classify_intent(query, lights_list, groups_list)
-    target_type = intent.get("target_type")
-    target_id = intent.get("target_id")
-    turn_on = intent.get("turn_on")
+    target_type = intent.get("type")
+    target_id = intent.get("id")
+    turn_on = intent.get("on")
 
     logger.debug(f"Intent: {intent}")
 

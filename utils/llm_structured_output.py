@@ -10,6 +10,7 @@ os.environ["LLAMA_CPP_LOG_LEVEL"] = "0"
 from typing import TypeVar
 
 import outlines
+from json_repair import repair_json
 from loguru import logger
 from pydantic import BaseModel
 
@@ -32,7 +33,7 @@ def generate_structured_output(
   pydantic_model: type[T],
   model_path: str | None = None,
   n_ctx: int | None = 2048,
-  max_tokens: int | None = 512,
+  max_tokens: int | None = 2500,
   **llama_kwargs,
 ) -> T:
   """Generate structured output using outlines with llama.cpp backend.
@@ -92,13 +93,11 @@ def generate_structured_output(
       sys.stderr = stderr_backup
 
     # Wrap with outlines for structured generation
-    model = outlines.from_llamacpp(llm)
-    prompt = f"""
-        System prompt: {system_prompt}
-        Users query: {user_prompt}
-    """
+    model = outlines.models.from_llamacpp(llm)
 
-    logger.debug(f"""Generating structured output with prompt: \n {prompt}...""")
+    prompt = f"""System prompt: {system_prompt}. Users query: {user_prompt} """
+
+    logger.debug(f"Generating structured output with {model_name}")
 
     # Generate structured output
     result = model(prompt, pydantic_model)
@@ -107,9 +106,16 @@ def generate_structured_output(
 
     # Parse the JSON string into the Pydantic model
     if isinstance(result, str):
-      return pydantic_model.model_validate_json(result)
+      # Repair any malformed/truncated JSON before validation
+      try:
+        repaired_json = repair_json(result)
+        logger.debug(f"Repaired JSON: {repaired_json}")
+        return pydantic_model.model_validate_json(repaired_json)
+      except Exception as repair_error:
+        logger.warning(f"JSON repair failed: {repair_error}, trying original")
+        return pydantic_model.model_validate_json(result)
     return result
 
-  except Exception as e:
-    logger.error(f"Failed to generate structured output: {e}")
+  except Exception as error:
+    logger.error(f"Failed to generate structured output: {error}")
     raise

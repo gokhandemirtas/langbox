@@ -2,7 +2,6 @@ import os
 import time
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.checkpoint.memory import InMemorySaver
 from loguru import logger
 
 from agents.agent_factory import create_llm_agent
@@ -28,7 +27,6 @@ def _get_agent():
       top_p=0.1,
       top_k=10,
       verbose=False,
-      checkpointer=InMemorySaver(),
     )
   return _agent
 
@@ -47,7 +45,6 @@ async def run_intent_classifier():
   agent = _get_agent()
   response = agent.invoke(
     {"messages": [SystemMessage(content=intent_prompt()), HumanMessage(content=user_query)]},
-    {"configurable": {"thread_id": "1"}},
   )
 
   # Extract the final answer from the last message

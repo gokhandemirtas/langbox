@@ -2,6 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Instructions for Claude Code
+
+**IMPORTANT - MCP Server Status Check**: At the start of every Claude Code session:
+1. **Check if the MCP server is available** by attempting to use any MCP tool (e.g., `mcp__langbox-mongodb__list_collections`)
+2. **Notify the user** of the MCP server status:
+   - If available: Inform the user that the MCP server is connected and ready
+   - If unavailable: Inform the user that the MCP server is not available and they may need to restart Claude Code or check the configuration
+3. This check should be done proactively at session start, not when the user first requests database access
+
+**IMPORTANT - Database Access**: When the user asks questions about data in MongoDB (e.g., "show me conversations", "how many documents", "search for X"):
+1. **ALWAYS use the MCP server tools** (prefixed with `mcp__langbox-mongodb__`) to query the database
+2. **DO NOT** use bash commands like `docker exec` or `mongosh` to access the database
+3. **DO NOT** check if MongoDB is running on the user's behalf (e.g., `docker-compose ps`)
+4. **ASSUME** MongoDB is running and available - the MCP server will handle connection issues
+5. The MCP server provides direct access to the langbox MongoDB instance
+6. See the "MongoDB MCP Server" section below for available tools
+
+**IMPORTANT**: When uncertain about library versions or APIs:
+1. **Always check `pyproject.toml`** for dependency versions before making assumptions about library APIs
+2. Look for the package name in the `dependencies` array to find the version constraint (e.g., `outlines>=1.2.9`)
+3. Use the version information to look up correct API documentation or make informed decisions about available features
+
 ## Project Overview
 
 Langbox is a Python project for running local LLM inference using LangChain and llama-cpp-python. The project uses GGUF model files for efficient CPU/GPU inference with the Llama.cpp backend, and MongoDB with Beanie ODM for data persistence.
@@ -247,6 +269,12 @@ langbox/
 │   ├── http_client.py
 │   ├── weather_client.py
 │   └── llm_structured_output.py  # Outlines-based structured generation
+├── mcp-servers/       # MCP (Model Context Protocol) servers
+│   └── mongodb/           # MongoDB MCP server for Claude Code integration
+│       └── index.js       # Node.js MCP server implementation
+├── .config/           # Configuration files
+│   └── claude-code/
+│       └── mcp.json       # MCP server configuration for Claude Code
 ├── models/            # GGUF model files (not in git)
 ├── main.py           # Application entry point
 ├── .env              # Environment variables (includes Hue bridge config)
@@ -354,3 +382,96 @@ Optional integration-specific variables:
 - Other service API keys
 
 **Note**: Model files (`.gguf`) and certificates (`.pem`) are excluded from git via `.gitignore`.
+
+## MongoDB MCP Server
+
+Claude Code has access to the langbox MongoDB database via MCP (Model Context Protocol). This allows interactive exploration and querying of the database during development sessions **without needing direct database access via bash commands**.
+
+### Available MCP Tools
+
+The MongoDB MCP server (`mcp-servers/mongodb/`) provides the following tools:
+
+- **`mcp__langbox-mongodb__list_collections`**: List all collections in the database
+  - No parameters required
+  - Returns array of collection names
+
+- **`mcp__langbox-mongodb__query_collection`**: Query documents with filters and limits
+  - Parameters: `collection` (string), `filter` (object, optional), `limit` (number, optional)
+  - Returns matching documents as JSON
+
+- **`mcp__langbox-mongodb__count_documents`**: Count documents matching a filter
+  - Parameters: `collection` (string), `filter` (object, optional)
+  - Returns count of matching documents
+
+- **`mcp__langbox-mongodb__get_recent_conversations`**: Get recent conversation history
+  - Parameters: `limit` (number, optional, default: 10)
+  - Returns most recent conversations ordered by datestamp
+
+- **`mcp__langbox-mongodb__search_conversations`**: Search conversations by text
+  - Parameters: `searchText` (string), `limit` (number, optional, default: 10)
+  - Returns conversations matching the search text in question or answer fields
+
+### MCP Configuration
+
+The MCP server is configured in `.config/claude-code/mcp.json` (in the project root):
+```json
+{
+  "mcpServers": {
+    "langbox-mongodb": {
+      "command": "node",
+      "args": ["mcp-servers/mongodb/index.js"],
+      "env": {
+        "MONGODB_HOST": "localhost",
+        "MONGODB_PORT": "27017",
+        "MONGODB_USER": "admin",
+        "MONGODB_PASSWORD": "admin",
+        "MONGODB_DB": "langbox"
+      }
+    }
+  }
+}
+```
+
+**Important**: The MCP server uses a relative path (`mcp-servers/mongodb/index.js`) and will be executed from the project root directory.
+
+### Usage Examples
+
+During Claude Code sessions, use the MCP tools to query the database:
+
+**Listing collections:**
+```
+User: "What collections are in the database?"
+Claude: Uses mcp__langbox-mongodb__list_collections
+```
+
+**Getting recent conversations:**
+```
+User: "Show me the last 5 conversations"
+Claude: Uses mcp__langbox-mongodb__get_recent_conversations with limit=5
+```
+
+**Counting documents:**
+```
+User: "How many conversations are stored?"
+Claude: Uses mcp__langbox-mongodb__count_documents with collection="conversations"
+```
+
+**Searching conversations:**
+```
+User: "Find conversations about weather"
+Claude: Uses mcp__langbox-mongodb__search_conversations with searchText="weather"
+```
+
+**Custom queries:**
+```
+User: "Show me conversations from today"
+Claude: Uses mcp__langbox-mongodb__query_collection with appropriate date filter
+```
+
+### Prerequisites
+
+- MongoDB must be running (start via `cd db && docker-compose up -d`)
+- Node.js must be installed (required by MCP server)
+- MCP server code must be present in `mcp-servers/mongodb/` directory
+
+The MCP server automatically connects to your running MongoDB instance using the credentials specified in the configuration.

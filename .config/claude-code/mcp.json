@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "langbox-mongodb": {
+      "command": "node",
+      "args": ["mcp-servers/mongodb/index.js"],
+      "env": {
+        "MONGODB_HOST": "localhost",
+        "MONGODB_PORT": "27017",
+        "MONGODB_USER": "admin",
+        "MONGODB_PASSWORD": "admin",
+        "MONGODB_DB": "langbox"
+      }
+    }
+  }
+}

@@ -149,9 +149,7 @@ class HueBridgeClient:
     """
     logger.debug("Formatting lights list from configuration")
 
-    lights_list = "\n".join(
-      [f'    - ID: {light.id}, Name: "{light.name}"' for light in config.lights]
-    )
+    lights_list = ", ".join([f'{light.id}:{light.name}' for light in config.lights])
     return lights_list
 
   def get_groups_formatted(self, config: HueConfiguration) -> str:
@@ -165,9 +163,7 @@ class HueBridgeClient:
     """
     logger.debug("Formatting groups list from configuration")
 
-    groups_list = "\n".join(
-      [f'    - ID: {group.id}, Name: "{group.name}"' for group in config.groups]
-    )
+    groups_list = ", ".join([f'{group.id}:{group.name}' for group in config.groups])
     return groups_list
 
   async def control_light(self, light_id: int, turn_on: bool) -> str:
