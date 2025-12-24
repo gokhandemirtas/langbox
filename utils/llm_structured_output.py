@@ -15,12 +15,12 @@ from pydantic import BaseModel
 
 # Suppress stderr during llama_cpp import to hide Metal initialization logs
 _original_stderr = sys.stderr
-sys.stderr = open(os.devnull, 'w')
+sys.stderr = open(os.devnull, "w")
 try:
-    from llama_cpp import Llama
+  from llama_cpp import Llama
 finally:
-    sys.stderr.close()
-    sys.stderr = _original_stderr
+  sys.stderr.close()
+  sys.stderr = _original_stderr
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -78,18 +78,18 @@ def generate_structured_output(
   try:
     # Initialize llama.cpp model - suppress Metal logs during initialization
     stderr_backup = sys.stderr
-    sys.stderr = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, "w")
     try:
-        llm = Llama(
-            model_path=full_model_path,
-            n_ctx=n_ctx,
-            max_tokens=max_tokens,
-            verbose=False,
-            **llama_kwargs
-        )
+      llm = Llama(
+        model_path=full_model_path,
+        n_ctx=n_ctx,
+        max_tokens=max_tokens,
+        verbose=False,
+        **llama_kwargs,
+      )
     finally:
-        sys.stderr.close()
-        sys.stderr = stderr_backup
+      sys.stderr.close()
+      sys.stderr = stderr_backup
 
     # Wrap with outlines for structured generation
     model = outlines.from_llamacpp(llm)
@@ -98,7 +98,7 @@ def generate_structured_output(
         Users query: {user_prompt}
     """
 
-    logger.debug(f"Generating structured output with prompt: {prompt[:100]}...")
+    logger.debug(f"""Generating structured output with prompt: \n {prompt}...""")
 
     # Generate structured output
     result = model(prompt, pydantic_model)

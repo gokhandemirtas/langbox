@@ -17,28 +17,34 @@ Control smart home devices (lights, thermostats, locks, appliances, etc.)
 
 **Examples:**
 - "turn on the lights"
+- "office lights on"
+- "office lights off"
+- "bedroom lights off"
 - "lights on in the living room"
-- "set thermostat to 72 degrees"
-- "lock the front door"
-- "turn off bedroom fan"
+- "turn off kitchen lights"
 - "dim the kitchen lights"
-- "open the garage door"
+- "lights off"
 
-**Keywords:** turn on, turn off, set, dim, brighten, lock, unlock, open, close, lights, thermostat, alarm, door, fan, AC
+**Keywords:** lights, lamp, bulb, turn on, turn off, switch on, switch off, dim, brighten
+
+**Important:** ANY query mentioning "lights", "lamp", or room names with "on/off" is HOME_CONTROL
 
 ---
 
 ### 2. SECURITY_ALARM
-Security system and alarm control
+Security system and alarm control (NOT lights or devices)
 
 **Examples:**
-- "alarm off"
-- "disable alarm"
+- "security alarm off"
+- "disable the alarm"
 - "arm security system"
 - "disarm the house"
 - "set alarm for away mode"
+- "activate home security"
 
-**Keywords:** alarm, security, arm, disarm, away mode, home mode
+**Keywords:** alarm system, security, arm, disarm, away mode, home mode, security alarm
+
+**Important:** Only use this for SECURITY SYSTEMS, not lights or other devices
 
 ---
 
@@ -71,16 +77,16 @@ Stock prices and financial market information
 ---
 
 ### 5. TRANSPORTATION
-Transit schedules, traffic, and travel information
+Directions and travel routes between locations (uses Google Maps API)
 
 **Examples:**
-- "what time is my train"
-- "when is the next bus"
-- "traffic to downtown"
-- "how long to get to work"
-- "is my flight on time"
+- "how do I get from Putney to Chelsea"
+- "directions from home to work"
+- "best route to the airport"
+- "how to get to Oxford Street"
+- "navigate to Central London"
 
-**Keywords:** train, bus, traffic, commute, flight, transit, subway, uber, route
+**Keywords:** how do I get, directions, route, navigate, travel from, go from, get to, way to
 
 ---
 
@@ -152,15 +158,17 @@ Casual conversation and chitchat not fitting other categories
 
 ## Classification Rules
 
-1. **Be specific over general**: If a query clearly matches a specific category (HOME_CONTROL, WEATHER, etc.), choose that over GENERAL_CHAT
+1. **Lights always = HOME_CONTROL**: If the query mentions "lights", "lamp", "bulb", or any room name + "on/off", it is ALWAYS HOME_CONTROL, never SECURITY_ALARM
 
-2. **Context matters**: "Alarm off" is SECURITY_ALARM, but "Set alarm for 7am" is TIMER_REMINDER
+2. **Security vs Timer alarms**: "Security alarm off" or "arm alarm" = SECURITY_ALARM, but "Set alarm for 7am" = TIMER_REMINDER
 
-3. **Device control priority**: Any command to control a physical device should be HOME_CONTROL
+3. **Device control priority**: Any command to control a physical device (lights, thermostat, appliances) should be HOME_CONTROL
 
-4. **Default to INFORMATION_QUERY**: When uncertain between categories, if it's a question, use INFORMATION_QUERY
+4. **Be specific over general**: If a query clearly matches a specific category (HOME_CONTROL, WEATHER, etc.), choose that over GENERAL_CHAT
 
-5. **Single intent only**: Choose the MOST relevant intent, even if multiple could apply
+5. **Default to INFORMATION_QUERY**: When uncertain between categories, if it's a question, use INFORMATION_QUERY
+
+6. **Single intent only**: Choose the MOST relevant intent, even if multiple could apply
 
 ## Response Format
 
