@@ -6,7 +6,7 @@ from loguru import logger
 
 from agents.agent_factory import create_llm_agent
 from db.schemas import Conversations
-from prompts.conversation_prompt import conversation_prompt
+from prompts.conversation_prompt import get_conversation_prompt
 
 # Lazy initialization of conversation agent
 _conversation_agent = None
@@ -18,6 +18,7 @@ def _get_conversation_agent():
   if _conversation_agent is None:
     _conversation_agent = create_llm_agent(
       model_name=os.environ.get("MODEL_QWEN2.5"),
+      max_tokens=3000,
       temperature=0.7,
       top_p=0.9,
       top_k=40,
@@ -40,12 +41,12 @@ async def handle_conversation(user_query: str, handler_response: str) -> str:
   Returns:
       The conversational agent's natural response
   """
-  logger.debug(handler_response)
+  logger.info(handler_response)
 
   # Generate a conversational response using the LLM
   messages = [
-    SystemMessage(content=conversation_prompt()),
-    HumanMessage(content=f"User asked: {user_query}\n\nInformation to use: {handler_response}"),
+    SystemMessage(content=get_conversation_prompt(handler_response)),
+    HumanMessage(content=user_query),
   ]
 
   agent = _get_conversation_agent()

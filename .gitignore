@@ -12,3 +12,5 @@ wheels/
 models/*.gguf
 
 hue_bridge.pem
+
+**/node_modules/*

@@ -19,12 +19,7 @@ _weather_agent = None
 def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"], temperature=0.3):
   """Get or create the weather agent with optimized parameters for weather analysis."""
   global _weather_agent
-  _weather_agent = create_llm_agent(
-    model_name,
-    temperature=temperature,
-    top_p=0.9,
-    top_k=40,
-  )
+  _weather_agent = create_llm_agent(model_name, temperature=temperature, top_p=0.9, top_k=40)
   return _weather_agent
 
 
@@ -47,7 +42,13 @@ def _comment_on_data(query: str, data: dict) -> str:
 Weather Data:
 {data_str}
 
-Please comment on the weather data provided above, in order to answer users query """
+Please comment on the weather data provided above,in order to answer users query.
+Keep your answer short and concise 
+
+Example:
+- Today in Paris it's mild and sunny, 20 degrees during the day and 8 in the evening.
+
+"""
 
   messages = [
     SystemMessage(content=weather_comment_prompt),
@@ -55,7 +56,7 @@ Please comment on the weather data provided above, in order to answer users quer
   ]
 
   # Use slightly higher temperature for more natural commentary
-  agent = _get_weather_agent(os.environ["MODEL_QWEN2.5"], temperature=0.7)
+  agent = _get_weather_agent(os.environ["MODEL_MISTRAL_7B"], temperature=0.3)
   response = agent.invoke({"messages": messages})
 
   result = response["messages"][-1].content.strip()
@@ -149,11 +150,10 @@ async def handle_weather(query: str) -> str:
 
   # Check if location is missing and ask the user
   if location == "UNKNOWN_LOCATION" or not location:
-    location = "London"
+    return "Could not determine the location"
 
   # Check if period is missing and ask the user
   if not time_period:
-    logger.info("Could not determine time period from query, asking user...")
     time_period = "CURRENT"
 
   weather_data = await _query_weather(location, time_period)
