@@ -11,6 +11,7 @@ from typing import TypeVar
 
 import outlines
 from json_repair import repair_json
+from langsmith import traceable
 from loguru import logger
 from pydantic import BaseModel
 
@@ -26,6 +27,7 @@ finally:
 T = TypeVar("T", bound=BaseModel)
 
 
+@traceable(name="structured_output_generation", run_type="llm")
 def generate_structured_output(
   model_name: str,
   user_prompt: str,
@@ -97,7 +99,9 @@ def generate_structured_output(
 
     prompt = f"""System prompt: {system_prompt}. Users query: {user_prompt} """
 
-    logger.debug(f"Generating structured output with {model_name}")
+    logger.debug(
+      f"Generating structured output with {model_name} for {pydantic_model.__name__}"
+    )
 
     # Generate structured output
     result = model(prompt, pydantic_model)
