@@ -1,9 +1,13 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
 class ReminderIntentResponse(BaseModel):
   """Schema for reminder intent parsing from user queries."""
 
-  request_type: str = Field(default="REMINDER")  # "REMINDER" or "TIMER"
-  reminder_date: str = Field(default="UNKNOWN")  # ISO date format YYYY-MM-DD or "UNKNOWN"
-  reminder_text: str = Field(default="UNKNOWN")  # What to remind about or "UNKNOWN"
+  type: str = Literal["REMINDER", "TIMER"]  # "REMINDER" or "TIMER"
+  datetime: str = Field(
+    default=""
+  )  # Fuzzy-date string like "tomorrow 5pm", "in two weeks", "next monday"
+  description: str = Field(default="")  # What to remind about

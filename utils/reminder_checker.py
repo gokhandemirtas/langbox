@@ -37,9 +37,9 @@ async def check_daily_reminders() -> list[str]:
       time_str = reminder.reminder_datetime.strftime("%H:%M")
       if reminder.reminder_end_time:
         end_time_str = reminder.reminder_end_time.strftime("%H:%M")
-        formatted = f"[{time_str}-{end_time_str}] {reminder.reminder_text}"
+        formatted = f"[{time_str}-{end_time_str}] {reminder.description}"
       else:
-        formatted = f"[{time_str}] {reminder.reminder_text}"
+        formatted = f"[{time_str}] {reminder.description}"
       reminder_texts.append(formatted)
 
     logger.info(f"Found {len(reminder_texts)} reminder(s) for today")
@@ -68,7 +68,7 @@ async def mark_reminder_completed(reminder_text: str) -> bool:
 
     # Filter by today and matching text
     for reminder in all_reminders:
-      if reminder.reminder_datetime.date() == today and reminder.reminder_text == reminder_text:
+      if reminder.reminder_datetime.date() == today and reminder.description == reminder_text:
         reminder.is_completed = True
         await reminder.save()
         logger.debug(f"Marked reminder as completed: {reminder_text}")

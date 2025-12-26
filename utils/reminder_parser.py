@@ -1,0 +1,48 @@
+"""Utility functions for parsing reminder dates and times from natural language."""
+
+from datetime import datetime
+
+import fuzzydate as fd
+from loguru import logger
+
+
+def parse_reminder_date(date_input: str) -> datetime | None:
+  """Parse natural language date/time string into a datetime object.
+
+  Args:
+      date_input: Natural language date/time (e.g., "tomorrow 2pm", "next Monday 14:00")
+
+  Returns:
+      datetime object if parsing succeeds, None otherwise
+
+  Examples:
+      >>> parse_reminder_date("tomorrow at 2pm")
+      datetime(2025, 12, 27, 14, 0)
+      >>> parse_reminder_date("next Wednesday")
+      datetime(2025, 12, 31, 0, 0)
+  """
+  try:
+    parsed_datetime = fd.to_datetime(date_input)
+
+    if parsed_datetime:
+      logger.debug(f"Parsed '{date_input}' to '{parsed_datetime.isoformat()}'")
+      return parsed_datetime
+    else:
+      logger.warning(f"Could not parse date: {date_input}")
+      return None
+
+  except Exception as e:
+    logger.error(f"Date parsing error for '{date_input}': {e}")
+    return None
+
+
+def format_reminder_display(dt: datetime) -> str:
+  """Format datetime for user-friendly display.
+
+  Args:
+      dt: datetime object to format
+
+  Returns:
+      Formatted string (e.g., "2025-12-30 14:00")
+  """
+  return dt.strftime("%Y-%m-%d %H:%M")

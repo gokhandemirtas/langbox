@@ -45,6 +45,6 @@ class HueConfiguration(Document):
 class Reminders(Document):
   reminder_datetime: datetime  # Main datetime for the reminder
   reminder_end_time: datetime | None = None  # Optional end time for time ranges
-  reminder_text: str
+  description: str
   created_at: date
   is_completed: bool = False
