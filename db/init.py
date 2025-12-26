@@ -5,9 +5,9 @@ from beanie import init_beanie
 from loguru import logger
 from pymongo import AsyncMongoClient
 
-from db.schemas import Conversations, Credentials, HueConfiguration, Weather
+from db.schemas import Conversations, Credentials, HueConfiguration, Reminders, Weather
 
-collections = [Conversations, Credentials, HueConfiguration, Weather]
+collections = [Conversations, Credentials, HueConfiguration, Reminders, Weather]
 
 
 async def init():

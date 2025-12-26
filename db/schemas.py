@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from beanie import Document
 from pydantic import BaseModel
@@ -40,3 +40,11 @@ class HueConfiguration(Document):
   groups: list[HueLightGroup]
   lights: list[HueLight]
   lastUpdated: date
+
+
+class Reminders(Document):
+  reminder_datetime: datetime  # Main datetime for the reminder
+  reminder_end_time: datetime | None = None  # Optional end time for time ranges
+  reminder_text: str
+  created_at: date
+  is_completed: bool = False

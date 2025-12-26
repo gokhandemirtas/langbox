@@ -3,7 +3,9 @@
     "allow": [
       "WebFetch(domain:github.com)",
       "WebFetch(domain:www.npmjs.com)",
-      "mcp__my-server__query_collection"
+      "mcp__my-server__query_collection",
+      "WebFetch(domain:pypi.org)",
+      "Bash(rm:*)"
     ],
     "deny": [],
     "ask": []

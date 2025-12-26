@@ -26,6 +26,7 @@ from loguru import logger
 
 from agents.intent_classifier import run_intent_classifier
 from db.init import init
+from utils.reminder_checker import check_daily_reminders
 
 start_time = time.time()
 logger.debug("Booting...")
@@ -37,6 +38,16 @@ logging.getLogger("llama_cpp").setLevel(logging.ERROR)
 async def main():
   await init()
   logger.debug(f"Booting complete in {time.time() - start_time}s")
+
+  # Check for daily reminders
+  reminders = await check_daily_reminders()
+  if reminders:
+    print("\n" + "=" * 50)
+    print("🔔 REMINDERS FOR TODAY:")
+    print("=" * 50)
+    for idx, reminder in enumerate(reminders, 1):
+      print(f"{idx}. {reminder}")
+    print("=" * 50 + "\n")
 
   # Continuous conversation loop
   while True:
