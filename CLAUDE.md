@@ -74,7 +74,6 @@ The application follows a modular agent-based architecture:
      - `finance/handler_finance.py`: Stock information and financial data
      - `calendar/handler_calendar.py`: Schedule and calendar management
      - `home_control/handler_home_control.py`: Smart home device control (Philips Hue integration)
-     - `security/handler_security.py`: Security system management
      - `timer/handler_timer.py`: Timer and reminder functionality
      - `transportation/handler_transportation.py`: Transportation and navigation
      - `information/handler_information.py`: General information queries
@@ -243,8 +242,6 @@ langbox/
 │   │   └── handler_chat.py          # General chat and greetings
 │   ├── home_control/
 │   │   └── handler_home_control.py  # Philips Hue smart home control
-│   ├── security/
-│   │   └── handler_security.py      # Security system
 │   ├── timer/
 │   │   └── handler_timer.py         # Timers and reminders
 │   ├── transportation/

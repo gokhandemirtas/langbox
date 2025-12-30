@@ -7,7 +7,6 @@ from handlers.finance.handler_finance import handle_finance_stocks
 from handlers.home_control.handler_home_control import handle_home_control
 from handlers.information.handler_information import handle_information_query
 from handlers.reminder.handler_reminder import handle_reminder
-from handlers.security.handler_security import handle_security_alarm
 from handlers.transportation.handler_transportation import handle_transportation
 from handlers.weather.handler_weather import handle_weather
 
@@ -26,7 +25,6 @@ async def route_intent(intent: str, query: str) -> str:
   # Define valid intent categories
   valid_intents = [
     "HOME_CONTROL",
-    "SECURITY_ALARM",
     "WEATHER",
     "FINANCE_STOCKS",
     "TRANSPORTATION",
@@ -64,7 +62,6 @@ async def route_intent(intent: str, query: str) -> str:
   # Route to the appropriate handler
   route_map = {
     "HOME_CONTROL": handle_home_control,
-    "SECURITY_ALARM": handle_security_alarm,
     "WEATHER": handle_weather,
     "FINANCE_STOCKS": handle_finance_stocks,
     "TRANSPORTATION": handle_transportation,

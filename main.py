@@ -25,8 +25,8 @@ import time
 from loguru import logger
 
 from agents.intent_classifier import run_intent_classifier
+from daily_routines import run_daily_routines
 from db.init import init
-from utils.reminder_checker import check_daily_reminders
 
 start_time = time.time()
 logger.debug("Booting...")
@@ -39,15 +39,16 @@ async def main():
   await init()
   logger.debug(f"Booting complete in {time.time() - start_time}s")
 
-  # Check for daily reminders
-  reminders = await check_daily_reminders()
-  if reminders:
-    print("\n" + "=" * 50)
-    print("🔔 REMINDERS FOR TODAY:")
-    print("=" * 50)
-    for idx, reminder in enumerate(reminders, 1):
-      print(f"{idx}. {reminder}")
-    print("=" * 50 + "\n")
+  # Run daily routines (reminders, weather, etc.)
+  daily_updates = await run_daily_routines()
+
+  # Process daily updates through conversational handler
+  if daily_updates:
+    from handlers.conversation.handler_conversation import handle_conversation
+
+    await handle_conversation(
+      user_query="What are my daily updates?", handler_response=daily_updates
+    )
 
   # Continuous conversation loop
   while True:

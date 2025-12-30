@@ -1,14 +1,13 @@
 import os
-from datetime import datetime
 
-import questionary
 from loguru import logger
 
-from db.schemas import Reminders
+from handlers.reminder.handler_create import handle_create_reminder
+from handlers.reminder.handler_list import handle_list_reminders
+from handlers.reminder.handler_timer import handle_timer
 from prompts.reminder_prompt import reminderIntentPrompt
 from pydantic_types.reminder_intent_response import ReminderIntentResponse
 from utils.llm_structured_output import generate_structured_output
-from utils.reminder_parser import format_reminder_display, parse_reminder_date
 
 
 def _classify_intent(query: str) -> dict:
@@ -46,41 +45,6 @@ def _classify_intent(query: str) -> dict:
     return {"type": "REMINDER", "datetime": "", "description": ""}
 
 
-async def _save_reminder(datetime_str: str, description: str) -> str:
-  """Parse datetime and save reminder to database.
-
-  Args:
-      datetime_str: Fuzzy-date string (e.g., "tomorrow 2pm")
-      description: What to remind about
-
-  Returns:
-      Success message with formatted datetime
-  """
-  # Parse the fuzzy-date string
-  parsed_datetime = parse_reminder_date(datetime_str)
-  if not parsed_datetime:
-    return f"Could not understand the date/time: '{datetime_str}'. Please try again."
-
-  # Save to database
-  try:
-    new_reminder = Reminders(
-      reminder_datetime=parsed_datetime,
-      description=description,
-      created_at=datetime.now().date(),
-      is_completed=False,
-    )
-    await new_reminder.insert()
-
-    # Format display time
-    display_time = format_reminder_display(parsed_datetime)
-    logger.debug(f"Reminder saved to database: {description} at {display_time}")
-    return f"Reminder set for {display_time}: {description}"
-
-  except Exception as e:
-    logger.error(f"Failed to save reminder: {e}")
-    return "Failed to save reminder. Please try again."
-
-
 async def handle_reminder(query: str) -> str:
   """Handle timers and reminders.
 
@@ -106,29 +70,19 @@ async def handle_reminder(query: str) -> str:
       f"Parsed - Type: {reminder_type}, DateTime: '{datetime_str}', Description: '{description}'"
     )
 
-  # Handle TIMER requests
-  if reminder_type == "TIMER":
-    logger.debug(f"Timer request: {description}")
-    return f"Timer functionality is in development. Noted: {description}"
+  # Route based on reminder type
+  match reminder_type:
+    case "LIST":
+      logger.debug("Listing today's reminders")
+      return await handle_list_reminders()
 
-  # Handle REMINDER requests
-  if reminder_type == "REMINDER":
-    # Prompt for description if missing
-    if not description or description.strip() == "":
-      description = await questionary.text("What is the reminder for?").ask_async()
-      if not description or description.strip() == "":
-        return "Reminder cancelled - no description provided."
+    case "TIMER":
+      logger.debug(f"Timer request: {description}")
+      return await handle_timer(description)
 
-    # Prompt for datetime if missing
-    if not datetime_str or datetime_str.strip() == "":
-      datetime_str = await questionary.text(
-        "When do you want this reminder? (e.g., tomorrow 2pm, next Monday 3pm, in two weeks)"
-      ).ask_async()
-      if not datetime_str or datetime_str.strip() == "":
-        return "Reminder cancelled - no date provided."
+    case "REMINDER":
+      logger.debug(f"Creating reminder: {datetime_str} - {description}")
+      return await handle_create_reminder(datetime_str, description)
 
-    # Save reminder using helper function
-    return await _save_reminder(datetime_str, description)
-
-  # Unknown request type
-  return "Could not determine if this is a timer or reminder request."
+    case _:
+      return "Could not determine if this is a timer or reminder request."

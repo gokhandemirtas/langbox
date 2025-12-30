@@ -94,7 +94,7 @@ def _classify_intent(query: str) -> dict:
     return {"location": "UNKNOWN_LOCATION", "period": "CURRENT"}
 
 
-async def _query_weather(location: str, period: str) -> dict:
+async def query_weather(location: str, period: str) -> dict:
   """Fetch weather data and format it for LLM consumption.
 
   Args:
@@ -107,7 +107,7 @@ async def _query_weather(location: str, period: str) -> dict:
 
   datestamp = datetime.now().date()
 
-  # Fetch all cities
+  # Fetch all cities from DB
   everything = await Weather.find_all().to_list()
   all = [record.model_dump(exclude={"id"}) for record in everything]
 
@@ -156,7 +156,7 @@ async def handle_weather(query: str) -> str:
   if not time_period:
     time_period = "CURRENT"
 
-  weather_data = await _query_weather(location, time_period)
+  weather_data = await query_weather(location, time_period)
   comment = _comment_on_data(query, weather_data)
 
   return comment
