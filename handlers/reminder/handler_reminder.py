@@ -26,12 +26,17 @@ def _classify_intent(query: str) -> dict:
   """
   try:
     result = generate_structured_output(
-      model_name=os.environ["MODEL_QWEN2.5"],
+      model_name=os.environ["MODEL_QWEN3"],
       user_prompt=query,
       system_prompt=reminderIntentPrompt,
       pydantic_model=ReminderIntentResponse,
-      max_tokens=512,
       n_ctx=4096,
+      max_tokens=256,
+      temperature=0.0,
+      repeat_penalty=1.15,
+      top_p=0.95,
+      top_k=40,
+      n_gpu_layers=8,
     )
 
     return result.model_dump()
@@ -88,7 +93,7 @@ async def handle_reminder(query: str) -> str:
   Returns:
       Confirmation of timer/reminder action
   """
-  logger.debug(f"⏰ ROUTE: REMINDER - Processing: {query}")
+  logger.debug(f"REMINDER - Processing: {query}")
 
   # Classify intent to extract type, datetime, and description
   intent = _classify_intent(query)
@@ -96,7 +101,10 @@ async def handle_reminder(query: str) -> str:
   datetime_str = intent.get("datetime", "")
   description = intent.get("description", "")
 
-  logger.debug(f"Parsed - Type: {reminder_type}, DateTime: '{datetime_str}', Description: '{description}'")
+  if reminder_type and datetime_str and description:
+    logger.debug(
+      f"Parsed - Type: {reminder_type}, DateTime: '{datetime_str}', Description: '{description}'"
+    )
 
   # Handle TIMER requests
   if reminder_type == "TIMER":

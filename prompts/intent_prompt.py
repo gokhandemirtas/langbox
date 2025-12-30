@@ -90,21 +90,7 @@ Directions and travel routes between locations (uses Google Maps API)
 
 ---
 
-### 6. CALENDAR_SCHEDULE
-Calendar events, meetings, and scheduling
-
-**Examples:**
-- "my meetings today"
-- "what's on my calendar"
-- "do I have any appointments tomorrow"
-- "when is my next meeting"
-- "schedule for this week"
-
-**Keywords:** meeting, calendar, appointment, schedule, event, today, tomorrow, this week
-
----
-
-### 7. TIMER_REMINDER
+### 6. REMINDER
 Timers, reminders, and alarms
 
 **Examples:**
@@ -113,12 +99,13 @@ Timers, reminders, and alarms
 - "set an alarm for 7am"
 - "cancel my timer"
 - "what timers are running"
+- "what are my reminders today"
 
 **Keywords:** timer, reminder, alarm clock, set alarm, remind me, in X minutes
 
 ---
 
-### 8. INFORMATION_QUERY
+### 7. INFORMATION_QUERY
 General knowledge questions and information lookup
 
 **Examples:**
@@ -132,7 +119,7 @@ General knowledge questions and information lookup
 
 ---
 
-### 9. GREETING
+### 8. GREETING
 Greetings and casual conversation starters
 
 **Examples:**
@@ -145,7 +132,7 @@ Greetings and casual conversation starters
 
 ---
 
-### 10. GENERAL_CHAT
+### 9. GENERAL_CHAT
 Casual conversation and chitchat not fitting other categories
 
 **Examples:**
@@ -160,7 +147,7 @@ Casual conversation and chitchat not fitting other categories
 
 1. **Lights always = HOME_CONTROL**: If the query mentions "lights", "lamp", "bulb", or any room name + "on/off", it is ALWAYS HOME_CONTROL, never SECURITY_ALARM
 
-2. **Security vs Timer alarms**: "Security alarm off" or "arm alarm" = SECURITY_ALARM, but "Set alarm for 7am" = TIMER_REMINDER
+2. **Security vs Timer alarms**: "Security alarm off" or "arm alarm" = SECURITY_ALARM, but "Set alarm for 7am" = REMINDER
 
 3. **Device control priority**: Any command to control a physical device (lights, thermostat, appliances) should be HOME_CONTROL
 
@@ -180,8 +167,7 @@ Valid responses (choose ONE):
 - WEATHER
 - FINANCE_STOCKS
 - TRANSPORTATION
-- CALENDAR_SCHEDULE
-- TIMER_REMINDER
+- REMINDER
 - INFORMATION_QUERY
 - GREETING
 - GENERAL_CHAT

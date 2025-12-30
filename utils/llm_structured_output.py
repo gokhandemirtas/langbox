@@ -57,20 +57,6 @@ def generate_structured_output(
   Raises:
       Exception: If model initialization or inference fails
 
-  Example:
-      >>> from pydantic import BaseModel
-      >>> class WeatherIntent(BaseModel):
-      ...     location: str
-      ...     period: str
-      >>> result = generate_structured_output(
-      ...     model_name="qwen2.5-1.5b-instruct-fp16.gguf",
-      ...     user_prompt="What's the weather in Seattle?",
-      ...     system_prompt="Extract weather location and period from query",
-      ...     pydantic_model=WeatherIntent,
-      ...     n_ctx=2048,
-      ...     max_tokens=512,
-      ...     n_gpu_layers=8
-      ... )
   """
   if model_path is None:
     model_path = os.environ.get("MODEL_PATH", "models/")
@@ -95,16 +81,22 @@ def generate_structured_output(
       sys.stderr = stderr_backup
 
     # Wrap with outlines for structured generation
-    model = outlines.models.from_llamacpp(llm)
+    model = outlines.from_llamacpp(llm)
 
-    prompt = f"""System prompt: {system_prompt}. Users query: {user_prompt} """
-
-    logger.debug(
-      f"Generating structured output with {model_name} for {pydantic_model.__name__}"
+    prompt = (
+      f"""Following these instructions: {system_prompt}. answer the users query: {user_prompt} """
     )
 
+    logger.debug(f"""
+      Generating structured output:
+      Model:{model_name}
+      Structure:{pydantic_model.__name__}
+      Context size: {n_ctx}
+      Max tokens: {max_tokens}
+    """)
+
     # Generate structured output
-    result = model(prompt, pydantic_model)
+    result = model(model_input=prompt, output_type=pydantic_model, max_tokens=max_tokens)
 
     logger.debug(f"Generated output: {result}")
 
