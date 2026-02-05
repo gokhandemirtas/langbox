@@ -1,5 +1,6 @@
 """Agent factory for creating and managing LLM agents with configurable parameters."""
 
+import gc
 import multiprocessing
 import os
 import sys
@@ -13,13 +14,29 @@ os.environ["LLAMA_CPP_LOG_LEVEL"] = "0"
 from langchain.agents import create_agent
 from langchain_community.chat_models import ChatLlamaCpp
 from loguru import logger
+from pynvml import nvmlInit, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+
+nvmlInit()
+_gpu_handle = nvmlDeviceGetHandleByIndex(0)
+
+
+def _log_vram(label: str):
+    """Log current VRAM usage."""
+    info = nvmlDeviceGetMemoryInfo(_gpu_handle)
+    used = info.used / 1024**2
+    total = info.total / 1024**2
+    logger.debug(f"VRAM [{label}]: {used:.0f}MB / {total:.0f}MB")
+
+# Track the active LLM so it can be reused or freed when a different model is needed
+_active_llm = None
+_active_model_name = None
 
 
 def create_llm(
     model_name: Optional[str] = None,
     temperature: float = 0.5,
     n_ctx: int = 8192,
-    n_gpu_layers: int = 8,
+    n_gpu_layers: int = -1,
     n_batch: int = 1000,
     max_tokens: int = 512,
     repeat_penalty: float = 1.5,
@@ -58,9 +75,27 @@ def create_llm(
             temperature=0.0
         )
     """
+    global _active_llm, _active_model_name
+
     # Use MODEL_HERMES_2_PRO as default, fallback to hardcoded default
     if model_name is None:
         model_name = os.environ.get('MODEL_HERMES_2_PRO', 'Hermes-2-Pro-Llama-3-8B-Q5_K_M.gguf')
+
+    # Reuse the existing LLM if same model is requested
+    if _active_llm is not None and _active_model_name == model_name:
+        logger.debug(f"Reusing existing LLM instance for model: {model_name}")
+        _log_vram(f"reusing {model_name}")
+        return _active_llm
+
+    # Different model requested — destroy the previous one to free memory
+    if _active_llm is not None:
+        prev_model = _active_model_name
+        logger.debug(f"Destroying LLM instance ({prev_model}) to load {model_name}")
+        del _active_llm
+        _active_llm = None
+        _active_model_name = None
+        gc.collect()
+        _log_vram(f"after destroying {prev_model}")
 
     # Default n_threads to CPU count - 1
     if n_threads is None:
@@ -96,6 +131,9 @@ def create_llm(
         sys.stdout = stdout_backup
         devnull.close()
 
+    _active_llm = llm
+    _active_model_name = model_name
+    _log_vram(f"after loading {model_name}")
     return llm
 
 
@@ -103,7 +141,7 @@ def create_llm_agent(
     model_name: Optional[str] = None,
     temperature: float = 0.5,
     n_ctx: int = 8192,
-    n_gpu_layers: int = 8,
+    n_gpu_layers: int = -1,
     n_batch: int = 1000,
     max_tokens: int = 512,
     repeat_penalty: float = 1.5,

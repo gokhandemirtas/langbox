@@ -8,23 +8,16 @@ from agents.agent_factory import create_llm_agent
 from db.schemas import Conversations
 from prompts.conversation_prompt import get_conversation_prompt
 
-# Lazy initialization of conversation agent
-_conversation_agent = None
-
-
 def _get_conversation_agent():
-  """Get or create the conversation agent."""
-  global _conversation_agent
-  if _conversation_agent is None:
-    _conversation_agent = create_llm_agent(
-      model_name=os.environ.get("MODEL_QWEN2.5"),
-      max_tokens=3000,
-      temperature=0.7,
-      top_p=0.9,
-      top_k=40,
-      repeat_penalty=1,
-    )
-  return _conversation_agent
+  """Create a conversation agent. Previous LLM instances are freed by the factory."""
+  return create_llm_agent(
+    model_name=os.environ.get("MODEL_QWEN2.5"),
+    max_tokens=3000,
+    temperature=0.7,
+    top_p=0.9,
+    top_k=40,
+    repeat_penalty=1,
+  )
 
 
 async def handle_conversation(user_query: str, handler_response: str) -> str:

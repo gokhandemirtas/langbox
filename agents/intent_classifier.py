@@ -8,26 +8,20 @@ from agents.agent_factory import create_llm_agent
 from agents.router import route_intent
 from prompts.intent_prompt import intent_prompt
 
-# Lazy initialization of agent
-_agent = None
-
-
 def _get_agent():
-  """Get or create the intent classifier agent."""
-  global _agent
-  if _agent is None:
-    _agent = create_llm_agent(
-      model_name=os.environ.get("MODEL_QWEN2.5"),
-      temperature=0.0,
-      n_ctx=8192,
-      n_gpu_layers=8,
-      n_batch=1000,
-      max_tokens=512,
-      repeat_penalty=1.2,
-      top_p=0.1,
-      top_k=10,
-      verbose=False,
-    )
+  """Create the intent classifier agent. Previous LLM instances are freed by the factory."""
+  return create_llm_agent(
+    model_name=os.environ.get("MODEL_QWEN2.5"),
+    temperature=0.0,
+    n_ctx=8192,
+    n_gpu_layers=-1,
+    n_batch=1000,
+    max_tokens=512,
+    repeat_penalty=1.2,
+    top_p=0.1,
+    top_k=10,
+    verbose=False,
+  )
   return _agent
 
 

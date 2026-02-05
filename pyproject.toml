@@ -22,6 +22,7 @@ dependencies = [
     "llama-cpp-python>=0.3.16",
     "loguru>=0.7.3",
     "numba>=0.63.1",
+    "nvidia-ml-py>=13.590.48",
     "outlines>=1.2.9",
     "pyauto-dotenv>=0.1.0",
     "pydantic>=2.12.5",

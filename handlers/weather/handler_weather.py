@@ -12,15 +12,9 @@ from pydantic_types.weather_intent_response import WeatherIntentResponse
 from utils.llm_structured_output import generate_structured_output
 from utils.weather_client import fetch_weather_forecast
 
-# Lazy initialization of weather agent
-_weather_agent = None
-
-
 def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"], temperature=0.3):
-  """Get or create the weather agent with optimized parameters for weather analysis."""
-  global _weather_agent
-  _weather_agent = create_llm_agent(model_name, temperature=temperature, top_p=0.9, top_k=40)
-  return _weather_agent
+  """Create a weather agent. Previous LLM instances are freed by the factory."""
+  return create_llm_agent(model_name, temperature=temperature, top_p=0.9, top_k=40)
 
 
 def _comment_on_data(query: str, data: dict) -> str:

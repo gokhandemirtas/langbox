@@ -2,6 +2,7 @@ import json
 import os
 import re
 import time
+from pathlib import Path
 from typing import Optional
 
 import questionary
@@ -10,23 +11,27 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
 from agents.agent_factory import create_llm_agent
-from prompts.finance_prompt import finance_comment_prompt, finance_intent_prompt
+from prompts.finance_prompt import finance_comment_prompt, get_finance_intent_prompt
 
-# Lazy initialization of finance agent
-_finance_agent = None
+# Load tickers from fixtures
+_tickers_path = Path(__file__).resolve().parent.parent.parent / "fixtures" / "tickers.json"
+with open(_tickers_path) as f:
+    _tickers_data = json.load(f)
+
+_valid_tickers = {entry["ticker"].upper() for entry in _tickers_data}
 
 def _get_finance_agent():
-    """Get or create the finance agent."""
-    global _finance_agent
-    if _finance_agent is None:
-        _finance_agent = create_llm_agent(
-            model_name=os.environ['MODEL_CONVERSATIONAL'],
-        )
-    return _finance_agent
+    """Create a finance agent. Previous LLM instances are freed by the factory."""
+    return create_llm_agent(
+        model_name=os.environ['MODEL_QWEN3'],
+    )
+    
 
 
 def _classify_intent(query: str) -> dict:
     """Classify user intent and extract ticker, data type, and time period.
+
+    Uses tickers.json to resolve company names to ticker symbols.
 
     Args:
         query: The user's financial query
@@ -39,7 +44,7 @@ def _classify_intent(query: str) -> dict:
         {"ticker": "AAPL", "dataType": "CURRENT", "period": null}
     """
     messages = [
-        SystemMessage(content=finance_intent_prompt),
+        SystemMessage(content=get_finance_intent_prompt(_tickers_data)),
         HumanMessage(content=query)
     ]
 
@@ -50,9 +55,13 @@ def _classify_intent(query: str) -> dict:
 
     # Extract the response content
     result = response["messages"][-1].content.strip()
+    logger.debug(f"Raw LLM response for intent classification: {result}")
 
     # Try to parse JSON response
     try:
+        # Strip <think>...</think> blocks (Qwen3 reasoning output)
+        result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
+
         # Remove markdown code blocks if present
         json_match = re.search(r'```json\s*(.*?)\s*```', result, re.DOTALL)
         if json_match:
@@ -64,6 +73,12 @@ def _classify_intent(query: str) -> dict:
         if "ticker" not in intent_data or "dataType" not in intent_data:
             logger.warning(f"Missing required fields in JSON response: {result}")
             return {"ticker": "UNKNOWN_TICKER", "dataType": "CURRENT", "period": None}
+
+        # Validate ticker against tickers.json
+        ticker = (intent_data.get("ticker") or "").upper()
+        if ticker not in _valid_tickers:
+            logger.warning(f"Ticker '{ticker}' not found in tickers.json")
+            return {"ticker": "UNKNOWN_TICKER", "dataType": "CURRENT", "period": None, "error": "TICKER_NOT_IN_JSON"}
 
         return intent_data
 
@@ -126,6 +141,10 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
         not tickerSymbol or
         not dataType
     )
+
+    # If the ticker was not found in tickers.json, return immediately without retrying
+    if intent.get("error") == "TICKER_NOT_IN_JSON":
+        return "I couldn't resolve the ticker symbol for that company. Please update tickers.json with the correct entry."
 
     if should_retry:
         if retry_count < MAX_RETRIES:

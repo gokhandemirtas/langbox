@@ -6,7 +6,8 @@
       "mcp__my-server__query_collection",
       "WebFetch(domain:pypi.org)",
       "Bash(rm:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(uv run ruff:*)"
     ],
     "deny": [],
     "ask": []
