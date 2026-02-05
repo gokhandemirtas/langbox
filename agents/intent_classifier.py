@@ -22,7 +22,6 @@ def _get_agent():
     top_k=10,
     verbose=False,
   )
-  return _agent
 
 
 async def run_intent_classifier():
@@ -48,7 +47,7 @@ async def run_intent_classifier():
   handler_response = await route_intent(intent=final_answer, query=user_query)
 
   # Process through conversational agent and save to DB
-  await handle_conversation(user_query=user_query, handler_response=handler_response)
+  logger.info(handler_response)
 
   elapsed_time = time.time() - start_time
   logger.info(

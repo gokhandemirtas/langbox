@@ -53,11 +53,9 @@ async def run_daily_routines() -> str:
     # Format weather output
     location = today.get("location", "London")
     temp = today.get("current_temperature", "N/A")
-    forecast = today.get("forecast", [])
 
-    forecast_str = ", ".join(forecast) if forecast else "No forecast available"
     weather_info = (
-      f"WEATHER in {location}: Current temperature is {temp}°C. Forecast: {forecast_str}"
+      f"WEATHER in {location}: Current temperature is {temp}°C."
     )
     updates.append(weather_info)
     logger.debug("✓ Weather collected")
