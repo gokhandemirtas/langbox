@@ -165,7 +165,7 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
         stock_data = _retrieve_stock_data(tickerSymbol, isHistorical, period)
 
 
-    except any as error:
+    except Exception as error:
         logger.error(f"An error occurred: {error}")
         questionary.select(
             "Stock retrieval failed, want to retry?",
@@ -186,7 +186,7 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
         logger.debug(f"Comment received in {time.time() - start_time}s ")
         return comment
 
-    except any as error:
+    except Exception as error:
         logger.error(f"An error occurred: {error}")
         return "I encountered an error while analyzing the stock data. Please try again."
 
@@ -221,7 +221,7 @@ def _retrieve_stock_data(
             data_str = str(data)
 
 
-    except any as error:
+    except Exception as error:
         return error
 
     return data_str

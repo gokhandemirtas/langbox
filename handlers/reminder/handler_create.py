@@ -2,7 +2,6 @@
 
 from datetime import datetime
 
-import questionary
 from loguru import logger
 
 from db.schemas import Reminders
@@ -21,17 +20,11 @@ async def handle_create_reminder(datetime_str: str, description: str) -> str:
   """
   # Prompt for description if missing
   if not description or description.strip() == "":
-    description = await questionary.text("What is the reminder for?").ask_async()
-    if not description or description.strip() == "":
-      return "Reminder cancelled - no description provided."
+    return "Reminder cancelled - no description provided."
 
   # Prompt for datetime if missing
   if not datetime_str or datetime_str.strip() == "":
-    datetime_str = await questionary.text(
-      "When do you want this reminder? (e.g., tomorrow 2pm, next Monday 3pm, in two weeks)"
-    ).ask_async()
-    if not datetime_str or datetime_str.strip() == "":
-      return "Reminder cancelled - no date provided."
+    return "Reminder cancelled - no date provided."
 
   # Parse the fuzzy-date string
   parsed_datetime = parse_reminder_date(datetime_str)
@@ -46,6 +39,7 @@ async def handle_create_reminder(datetime_str: str, description: str) -> str:
       created_at=datetime.now().date(),
       is_completed=False,
     )
+    logger.debug(new_reminder)
     await new_reminder.insert()
 
     # Format display time

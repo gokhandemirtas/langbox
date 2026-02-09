@@ -5,6 +5,20 @@ from datetime import datetime
 import fuzzydate as fd
 from loguru import logger
 
+def parse_time(date_input: str) -> int:
+  try:
+    parsed_time = fd.to_seconds(date_input)
+    if parsed_time:
+      logger.debug(f"Parsed '{date_input}' to '{parsed_time}'")
+      return parsed_time
+    else:
+      logger.warning(f"Could not parse time: {date_input}")
+      return None
+
+  except Exception as e:
+    logger.error(f"Time parsing error for '{date_input}': {e}")
+    return None
+
 
 def parse_reminder_date(date_input: str) -> datetime | None:
   """Parse natural language date/time string into a datetime object.

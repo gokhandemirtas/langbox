@@ -25,8 +25,10 @@ Examples - Creating reminders:
 - "Remind me to call mom" → {"type": "REMINDER", "datetime": "", "description": "call mom"}
 - "Set a reminder for mom's birthday" → {"type": "REMINDER", "datetime": "", "description": "moms birthday"}
 - "Remind me next monday at 3pm to submit report" → {"type": "REMINDER", "datetime": "next monday 3pm", "description": "submit report"}
-- "Set a timer for 5 minutes" → {"type": "TIMER", "datetime": "5 minutes", "description": "5 minutes timer"}
-- "Remind me in two weeks about the dentist" → {"type": "REMINDER", "datetime": "in two weeks", "description": "dentist"}
+
+Examples - Creating timers:
+- "Set a timer for 5 minutes for book club" → {"type": "TIMER", "datetime": "5 minutes", "description": "book club"}
+- "Set a timer in 10 seconds for cake" → {"type": "TIMER", "datetime": "15 seconds", "description": "dentist"}
 
 Examples - Listing reminders:
 - "List my reminders" → {"type": "LIST", "datetime": "", "description": ""}

@@ -42,7 +42,7 @@ def _classify_intent(query: str) -> dict:
 
   except Exception as e:
     logger.error(f"Failed to classify reminder intent. Error: {e}")
-    return {"type": "REMINDER", "datetime": "", "description": ""}
+    return e
 
 
 async def handle_reminder(query: str) -> str:
@@ -67,7 +67,7 @@ async def handle_reminder(query: str) -> str:
 
   if reminder_type and datetime_str and description:
     logger.debug(
-      f"Parsed - Type: {reminder_type}, DateTime: '{datetime_str}', Description: '{description}'"
+      f"REMINDER - Type: {reminder_type}, DateTime: '{datetime_str}', Description: '{description}'"
     )
 
   # Route based on reminder type
@@ -78,7 +78,7 @@ async def handle_reminder(query: str) -> str:
 
     case "TIMER":
       logger.debug(f"Timer request: {description}")
-      return await handle_timer(description)
+      return await handle_timer(datetime_str, description)
 
     case "REMINDER":
       logger.debug(f"Creating reminder: {datetime_str} - {description}")
