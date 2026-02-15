@@ -1,12 +1,6 @@
 """Utility for generating structured outputs using outlines and llama.cpp."""
 
 import os
-import sys
-
-os.environ["GGML_METAL_LOG_LEVEL"] = "0"
-os.environ["GGML_LOG_LEVEL"] = "0"
-os.environ["LLAMA_CPP_LOG_LEVEL"] = "0"
-
 from typing import TypeVar
 
 import outlines
@@ -15,14 +9,7 @@ from langsmith import traceable
 from loguru import logger
 from pydantic import BaseModel
 
-# Suppress stderr during llama_cpp import to hide Metal initialization logs
-_original_stderr = sys.stderr
-sys.stderr = open(os.devnull, "w")
-try:
-  from llama_cpp import Llama
-finally:
-  sys.stderr.close()
-  sys.stderr = _original_stderr
+from utils.vram_manager import vram_manager
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -58,27 +45,15 @@ def generate_structured_output(
       Exception: If model initialization or inference fails
 
   """
-  if model_path is None:
-    model_path = os.environ.get("MODEL_PATH", "models/")
-
-  # Construct full model path
-  full_model_path = os.path.join(model_path, model_name)
-
   try:
-    # Initialize llama.cpp model - suppress Metal logs during initialization
-    stderr_backup = sys.stderr
-    sys.stderr = open(os.devnull, "w")
-    try:
-      llm = Llama(
-        model_path=full_model_path,
-        n_ctx=n_ctx,
-        max_tokens=max_tokens,
-        verbose=False,
-        **llama_kwargs,
-      )
-    finally:
-      sys.stderr.close()
-      sys.stderr = stderr_backup
+    llm = vram_manager.get_or_load_llama(
+      model_name=model_name,
+      model_path=model_path,
+      n_ctx=n_ctx,
+      max_tokens=max_tokens,
+      verbose=False,
+      **llama_kwargs,
+    )
 
     # Wrap with outlines for structured generation
     model = outlines.from_llamacpp(llm)
@@ -87,13 +62,7 @@ def generate_structured_output(
       f"""Following these instructions: {system_prompt}. answer the users query: {user_prompt} """
     )
 
-    logger.debug(f"""
-      Generating structured output:
-      Model:{model_name}
-      Structure:{pydantic_model.__name__}
-      Context size: {n_ctx}
-      Max tokens: {max_tokens}
-    """)
+    logger.debug(f"Generating structured output: Model:{model_name}, Structure:{pydantic_model.__name__}, Context size: {n_ctx} Max tokens: {max_tokens}")
 
     # Generate structured output
     result = model(model_input=prompt, output_type=pydantic_model, max_tokens=max_tokens)
@@ -105,7 +74,6 @@ def generate_structured_output(
       # Repair any malformed/truncated JSON before validation
       try:
         repaired_json = repair_json(result)
-        logger.debug(f"Repaired JSON: {repaired_json}")
         return pydantic_model.model_validate_json(repaired_json)
       except Exception as repair_error:
         logger.warning(f"JSON repair failed: {repair_error}, trying original")

@@ -40,7 +40,6 @@ async def run_daily_routines() -> str:
   try:
     reminders_response = await handle_list_reminders()
     updates.append(f"REMINDERS: {reminders_response}")
-    logger.debug("✓ Reminders collected")
   except Exception as e:
     logger.error(f"Failed to get reminders: {e}")
     updates.append("REMINDERS: Failed to retrieve reminders")
@@ -58,7 +57,6 @@ async def run_daily_routines() -> str:
       f"WEATHER in {location}: Current temperature is {temp}°C."
     )
     updates.append(weather_info)
-    logger.debug("✓ Weather collected")
 
   except Exception as e:
     logger.error(f"Failed to get weather: {e}")
@@ -75,7 +73,6 @@ async def run_daily_routines() -> str:
 
   # Combine all updates into a single paragraph
   combined_updates = " ".join(updates)
-  logger.debug(f"✓ Daily routines complete, returning {len(updates)} updates")
 
   return combined_updates
 

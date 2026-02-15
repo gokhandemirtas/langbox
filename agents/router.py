@@ -32,7 +32,6 @@ async def route_intent(intent: str, query: str) -> str:
     "REMINDER",
     "INFORMATION_QUERY",
     "GREETING",
-    "GENERAL_CHAT",
   ]
 
   # Extract the intent from the response
@@ -56,8 +55,7 @@ async def route_intent(intent: str, query: str) -> str:
       return handle_general_chat(query=query)
 
   # Log the detected intent
-  logger.debug(f"Detected intent: {detected_intent}")
-  logger.debug(f"Original query: {query}")
+  logger.debug(f"Detected primary intent: {detected_intent}, from {query}")
 
   # Route to the appropriate handler
   route_map = {

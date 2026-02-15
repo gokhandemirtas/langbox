@@ -7,7 +7,12 @@
       "WebFetch(domain:pypi.org)",
       "Bash(rm:*)",
       "WebSearch",
-      "Bash(uv run ruff:*)"
+      "Bash(uv run ruff:*)",
+      "Bash(uv add:*)",
+      "Bash(uv remove:*)",
+      "Bash(python3:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []

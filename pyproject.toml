@@ -24,11 +24,14 @@ dependencies = [
     "numba>=0.63.1",
     "nvidia-ml-py>=13.590.48",
     "outlines>=1.2.9",
+    "psutil>=7.0.0",
+    "pocket-tts>=1.0.3",
     "pyauto-dotenv>=0.1.0",
     "pydantic>=2.12.5",
     "python-weather>=2.1.0",
-    "questionary>=2.1.1",
     "requests",
+    "scipy>=1.16.3",
+    "soundfile>=0.13.1",
     "tensorflow>=2.20.0",
     "torch>=2.9.1",
     "transformers>=4.57.3",
@@ -47,6 +50,7 @@ quote-style = "double"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
 
 [dependency-groups]
 dev = [

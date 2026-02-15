@@ -57,7 +57,6 @@ async def handle_reminder(query: str) -> str:
   Returns:
       Confirmation of timer/reminder action
   """
-  logger.debug(f"REMINDER - Processing: {query}")
 
   # Classify intent to extract type, datetime, and description
   intent = _classify_intent(query)
@@ -67,22 +66,25 @@ async def handle_reminder(query: str) -> str:
 
   if reminder_type and datetime_str and description:
     logger.debug(
-      f"REMINDER - Type: {reminder_type}, DateTime: '{datetime_str}', Description: '{description}'"
+      f"""Detected secondary intent,
+      Type: {reminder_type}\n
+      DateTime: '{datetime_str}'\n
+      Description: '{description}'"""
     )
 
-  # Route based on reminder type
-  match reminder_type:
-    case "LIST":
-      logger.debug("Listing today's reminders")
-      return await handle_list_reminders()
+    # Route based on reminder type
+    match reminder_type:
+      case "LIST":
+        logger.debug("Listing today's reminders")
+        return await handle_list_reminders()
 
-    case "TIMER":
-      logger.debug(f"Timer request: {description}")
-      return await handle_timer(datetime_str, description)
+      case "TIMER":
+        logger.debug(f"Timer request: {description}")
+        return await handle_timer(datetime_str, description)
 
-    case "REMINDER":
-      logger.debug(f"Creating reminder: {datetime_str} - {description}")
-      return await handle_create_reminder(datetime_str, description)
+      case "REMINDER":
+        logger.debug(f"Creating reminder: {datetime_str} - {description}")
+        return await handle_create_reminder(datetime_str, description)
 
-    case _:
-      return "Could not determine if this is a timer or reminder request."
+      case _:
+        return "Could not determine if this is a timer or reminder request."

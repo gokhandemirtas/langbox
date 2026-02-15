@@ -5,7 +5,6 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import questionary
 import yfinance as yf
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
@@ -23,7 +22,7 @@ _valid_tickers = {entry["ticker"].upper() for entry in _tickers_data}
 def _get_finance_agent():
     """Create a finance agent. Previous LLM instances are freed by the factory."""
     return create_llm_agent(
-        model_name=os.environ['MODEL_QWEN3'],
+        model_name=os.environ['MODEL_LLAMA2_7B'],
     )
     
 
@@ -98,7 +97,7 @@ def _comment_on_data(query: str, data: any) -> str:
     """
     messages = [
         SystemMessage(content=finance_comment_prompt),
-        HumanMessage(content={ query, data })
+        HumanMessage(content=f"User Query: {query}\n\nFinancial Data:\n{data}")
     ]
 
     agent = _get_finance_agent()
@@ -167,14 +166,6 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
 
     except Exception as error:
         logger.error(f"An error occurred: {error}")
-        questionary.select(
-            "Stock retrieval failed, want to retry?",
-            choices=[
-                "Order a pizza",
-                "Make a reservation",
-                "Ask for opening hours"
-            ]
-        ).ask()
 
         return "I encountered an error while retrieving stock data. Please try again."
 
@@ -182,8 +173,8 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
     try:
         start_time = time.time()
         comment = _comment_on_data(query, stock_data)
-        logger.info(comment)
-        logger.debug(f"Comment received in {time.time() - start_time}s ")
+        logger.info(f"Raw comment: {comment}")
+        logger.debug(f"Finance commented in {time.time() - start_time:.2f}s ")
         return comment
 
     except Exception as error:

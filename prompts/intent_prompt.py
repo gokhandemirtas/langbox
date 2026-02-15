@@ -109,6 +109,8 @@ General knowledge questions and information lookup
 - "who wrote Harry Potter"
 - "define photosynthesis"
 - "convert 10 miles to kilometers"
+- "2+2 ?"
+- "what is the distance between earth and moon"
 
 **Keywords:** what is, who is, how to, define, explain, tell me about, convert
 
@@ -127,17 +129,6 @@ Greetings and casual conversation starters
 
 ---
 
-### 8. GENERAL_CHAT
-Casual conversation and chitchat not fitting other categories
-
-**Examples:**
-- "how are you"
-- "tell me a joke"
-- "I'm bored"
-- "what can you do"
-
----
-
 ## Classification Rules
 
 1. **Timers/Reminders always = REMINDER**: If the query mentions "timer", "reminder", or "alarm clock", it is ALWAYS REMINDER, NOT HOME_CONTROL
@@ -146,7 +137,7 @@ Casual conversation and chitchat not fitting other categories
 
 3. **Device control = HOME_CONTROL**: Any command to control a physical device (lights, thermostat, appliances) should be HOME_CONTROL
 
-4. **Be specific over general**: If a query clearly matches a specific category (HOME_CONTROL, WEATHER, etc.), choose that over GENERAL_CHAT
+4. **Be specific over general**: If a query clearly matches a specific category (HOME_CONTROL, WEATHER, etc.)
 
 5. **Default to INFORMATION_QUERY**: When uncertain between categories, if it's a question, use INFORMATION_QUERY
 
@@ -164,7 +155,6 @@ Valid responses (choose ONE):
 - REMINDER
 - INFORMATION_QUERY
 - GREETING
-- GENERAL_CHAT
 
 CRITICAL RULES:
 - Output ONLY the intent name (one of the 8 options above)

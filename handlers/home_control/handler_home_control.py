@@ -69,7 +69,7 @@ async def handle_home_control(query: str) -> str:
     target_id = intent.get("id")
     turn_on = intent.get("on")
 
-    logger.debug(f"Intent: {intent}")
+    logger.debug(f"Detected secondary intent: {intent}")
 
     # Control lights based on target type
     if target_type == "ALL":

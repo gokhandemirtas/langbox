@@ -1,6 +1,10 @@
+import asyncio
+
 import python_weather
 
 from pydantic_types.weather_forecast import WeatherForecast
+
+TIMEOUT_SECONDS = 30
 
 
 async def fetch_weather_forecast(location: str) -> WeatherForecast:
@@ -11,12 +15,23 @@ async def fetch_weather_forecast(location: str) -> WeatherForecast:
 
   Returns:
       WeatherForecast: Structured weather forecast data with flattened structure
-  """
-  async with python_weather.Client(unit=python_weather.METRIC) as client:
-    # Fetch a weather forecast from a city.
-    weather = await client.get(location)
 
-    forecast = []
+  Raises:
+      asyncio.TimeoutError: If the request exceeds TIMEOUT_SECONDS
+      Exception: If the weather fetch fails
+  """
+  return await asyncio.wait_for(_fetch(location), timeout=TIMEOUT_SECONDS)
+
+
+async def _fetch(location: str) -> WeatherForecast:
+  """Internal fetch logic."""
+  async with python_weather.Client(unit=python_weather.METRIC) as client:
+    try:
+      weather = await client.get(location)
+
+      forecast = []
+    except Exception as e:
+      return e
 
     # Fetch weather forecast for upcoming days.
     for daily in weather:

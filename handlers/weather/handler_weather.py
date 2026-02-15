@@ -1,8 +1,10 @@
 import json
 import os
+import uuid
 from datetime import datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import InMemorySaver
 from loguru import logger
 
 from agents.agent_factory import create_llm_agent
@@ -12,9 +14,14 @@ from pydantic_types.weather_intent_response import WeatherIntentResponse
 from utils.llm_structured_output import generate_structured_output
 from utils.weather_client import fetch_weather_forecast
 
-def _get_weather_agent(model_name=os.environ["MODEL_QWEN2.5"], temperature=0.3):
-  """Create a weather agent. Previous LLM instances are freed by the factory."""
-  return create_llm_agent(model_name, temperature=temperature, top_p=0.9, top_k=40)
+weather_agent = create_llm_agent(
+  model_name=os.environ["MODEL_QWEN2.5"],
+  temperature=0.3,
+  top_p=0.9,
+  top_k=40,
+  n_ctx=16384,
+  checkpointer=InMemorySaver(),
+)
 
 
 def _comment_on_data(query: str, data: dict) -> str:
@@ -49,9 +56,8 @@ Example:
     HumanMessage(content=user_message),
   ]
 
-  # Use slightly higher temperature for more natural commentary
-  agent = _get_weather_agent(os.environ["MODEL_MISTRAL_7B"], temperature=0.3)
-  response = agent.invoke({"messages": messages})
+  config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+  response = weather_agent.invoke({"messages": messages}, config=config)
 
   result = response["messages"][-1].content.strip()
 
@@ -72,7 +78,6 @@ def _classify_intent(query: str) -> dict:
       {"location": "Seattle", "period": "CURRENT"}
   """
 
-  # Try to parse and validate JSON response
   try:
     result = generate_structured_output(
       model_name=os.environ["MODEL_QWEN2.5"],
@@ -101,10 +106,6 @@ async def query_weather(location: str, period: str) -> dict:
 
   datestamp = datetime.now().date()
 
-  # Fetch all cities from DB
-  everything = await Weather.find_all().to_list()
-  all = [record.model_dump(exclude={"id"}) for record in everything]
-
   # Check if today's forecast exists for the location
   found = await Weather.find(Weather.datestamp == datestamp, Weather.location == location).to_list()
   if found:
@@ -116,14 +117,14 @@ async def query_weather(location: str, period: str) -> dict:
     # Create new record with flattened structure
     newRecord = Weather(
       datestamp=datestamp,
-      location=weather_forecast.location,
+      location=weather_forecast.location.lower(),
       current_temperature=weather_forecast.current_temperature,
       forecast=weather_forecast.forecast,
     )
     await newRecord.insert()
     today = newRecord.model_dump(exclude={"id"})
 
-  return {"all": all, "today": today}
+  return {"today": today}
 
 
 async def handle_weather(query: str) -> str:
@@ -137,10 +138,10 @@ async def handle_weather(query: str) -> str:
   """
 
   intent = _classify_intent(query)
-  location = intent.get("location")
+  location = intent.get("location", "").lower()
   time_period = intent.get("period")
 
-  logger.debug(f"Location: {location}, period: {time_period}")
+  logger.debug(f"Detected secondary intent, Location: {location}, period: {time_period}")
 
   # Check if location is missing and ask the user
   if location == "UNKNOWN_LOCATION" or not location:

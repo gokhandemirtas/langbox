@@ -15,8 +15,7 @@ weatherIntentPrompt = """
     }
 
     **Fields:**
-    - location: The city/location name (e.g., "New York", "London", "Tokyo"). Use "UNKNOWN_LOCATION"
-      if you cannot identify it.
+    - location: The city/location name (e.g., "New York", "London", "Tokyo").
     - period: Either "CURRENT" or "FORECAST"
 
     ## Examples
