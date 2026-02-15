@@ -38,6 +38,7 @@ dependencies = [
     "urllib3>=2.5.0",
     "wikipedia>=1.4.0",
     "yfinance>=0.2.66",
+    "pedalboard>=0.9.22",
 ]
 
 [tool.ruff]

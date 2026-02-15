@@ -64,7 +64,7 @@ Return your response as a valid JSON object with this exact structure:
 5- Return ONLY valid JSON, no additional text or markdown.
 """
 
-finance_comment_prompt = """# Financial Data Analysis Expert
+finance_comment_prompt = """
 
 You are a financial expert analyzing real-time market data to answer user queries.
 

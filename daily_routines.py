@@ -45,7 +45,7 @@ async def run_daily_routines() -> str:
     updates.append("REMINDERS: Failed to retrieve reminders")
 
   # ==================== ROUTINE 2: Check Weather for London ====================
-  try:
+  """ try:
     weather_data = await query_weather(location="London", period="CURRENT")
     today = weather_data.get("today", {})
 
@@ -60,7 +60,7 @@ async def run_daily_routines() -> str:
 
   except Exception as e:
     logger.error(f"Failed to get weather: {e}")
-    updates.append("WEATHER: Failed to retrieve weather information")
+    updates.append("WEATHER: Failed to retrieve weather information") """
 
   # ==================== ROUTINE 3: Placeholder for Future Routines ====================
   # TODO: Add more routines here as needed

@@ -6,7 +6,7 @@ from loguru import logger
 from agents.router import route_intent
 from prompts.intent_prompt import intent_prompt
 from pydantic_types.intent_response import IntentResponse
-from tts import speak
+from tts.tts import speak
 from utils.llm_structured_output import generate_structured_output
 
 
@@ -35,6 +35,7 @@ async def run_intent_classifier():
 
   # Process through conversational agent and save to DB
   logger.info(handler_response)
+  speak(handler_response)
 
   elapsed_time = time.time() - start_time
   logger.info(

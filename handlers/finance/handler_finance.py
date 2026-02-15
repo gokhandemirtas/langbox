@@ -1,6 +1,5 @@
 import json
 import os
-import re
 import time
 from pathlib import Path
 from typing import Optional
@@ -11,6 +10,8 @@ from loguru import logger
 
 from agents.agent_factory import create_llm_agent
 from prompts.finance_prompt import finance_comment_prompt, get_finance_intent_prompt
+from pydantic_types.finance_intent_response import FinanceIntentResponse
+from utils.llm_structured_output import generate_structured_output
 
 # Load tickers from fixtures
 _tickers_path = Path(__file__).resolve().parent.parent.parent / "fixtures" / "tickers.json"
@@ -42,36 +43,15 @@ def _classify_intent(query: str) -> dict:
         >>> _classify_intent("What's Apple stock price?")
         {"ticker": "AAPL", "dataType": "CURRENT", "period": null}
     """
-    messages = [
-        SystemMessage(content=get_finance_intent_prompt(_tickers_data)),
-        HumanMessage(content=query)
-    ]
-
-    agent = _get_finance_agent()
-    response = agent.invoke({
-        "messages": messages
-    })
-
-    # Extract the response content
-    result = response["messages"][-1].content.strip()
-    logger.debug(f"Raw LLM response for intent classification: {result}")
-
-    # Try to parse JSON response
     try:
-        # Strip <think>...</think> blocks (Qwen3 reasoning output)
-        result = re.sub(r'<think>.*?</think>', '', result, flags=re.DOTALL).strip()
+        result = generate_structured_output(
+            model_name=os.environ["MODEL_QWEN2.5"],
+            user_prompt=query,
+            system_prompt=get_finance_intent_prompt(_tickers_data),
+            pydantic_model=FinanceIntentResponse,
+        )
 
-        # Remove markdown code blocks if present
-        json_match = re.search(r'```json\s*(.*?)\s*```', result, re.DOTALL)
-        if json_match:
-            result = json_match.group(1)
-
-        intent_data = json.loads(result)
-
-        # Validate required fields
-        if "ticker" not in intent_data or "dataType" not in intent_data:
-            logger.warning(f"Missing required fields in JSON response: {result}")
-            return {"ticker": "UNKNOWN_TICKER", "dataType": "CURRENT", "period": None}
+        intent_data = result.model_dump()
 
         # Validate ticker against tickers.json
         ticker = (intent_data.get("ticker") or "").upper()
@@ -81,8 +61,8 @@ def _classify_intent(query: str) -> dict:
 
         return intent_data
 
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse JSON response: {result}. Error: {e}")
+    except Exception as e:
+        logger.error(f"Failed to classify finance intent. Error: {e}")
         return {"ticker": "UNKNOWN_TICKER", "dataType": "CURRENT", "period": None}
 
 

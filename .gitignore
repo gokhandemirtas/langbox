@@ -16,3 +16,5 @@ hue_bridge.pem
 **/node_modules/*
 
 .env
+
+tts/output.wav
