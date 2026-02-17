@@ -166,6 +166,31 @@ class HueBridgeClient:
     groups_list = ", ".join([f'{group.id}:{group.name}' for group in config.groups])
     return groups_list
 
+  async def are_lights_on(self, target_type: str, target_id: int | None) -> bool:
+    """Check if lights are currently on for the given target.
+
+    Args:
+        target_type: "ALL", "GROUP", or "LIGHT"
+        target_id: ID of the target light or group, None for ALL
+
+    Returns:
+        True if any targeted light is on
+    """
+    if not self._instance:
+      self._instance = await self._get_hue_instance()
+
+    if not self._instance:
+      raise Exception("Failed to connect to Hue bridge")
+
+    if target_type == "LIGHT" and target_id is not None:
+      light = self._instance.get_light(id_=target_id)
+      return light.is_on
+    elif target_type == "GROUP" and target_id is not None:
+      group = self._instance.get_group(id_=target_id)
+      return group.is_on
+    else:
+      return any(light.is_on for light in self._instance.get_lights())
+
   async def control_light(self, light_id: int, turn_on: bool) -> str:
     """Control a specific light.
 

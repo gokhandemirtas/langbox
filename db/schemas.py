@@ -42,6 +42,11 @@ class HueConfiguration(Document):
   lastUpdated: date
 
 
+class Newsfeed(Document):
+  datestamp: date
+  content: str  # Large text field for storing full RSS feed content
+
+
 class Reminders(Document):
   reminder_datetime: datetime  # Main datetime for the reminder
   reminder_end_time: datetime | None = None  # Optional end time for time ranges

@@ -17,4 +17,4 @@ hue_bridge.pem
 
 .env
 
-tts/output.wav
+*.wav

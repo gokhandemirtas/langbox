@@ -10,4 +10,4 @@ class HomeControlIntentResponse(BaseModel):
     ..., description="Type of target: ALL for all lights, GROUP for light group, LIGHT for individual light"
   )
   id: int | None = Field(None, description="ID of the target light or group. None if type is ALL")
-  on: bool = Field(..., description="True to turn on, False to turn off")
+  on: bool | None = Field(..., description="True to turn on, False to turn off, None to toggle")

@@ -71,15 +71,23 @@ async def handle_home_control(query: str) -> str:
 
     logger.debug(f"Detected secondary intent: {intent}")
 
+    # Resolve toggle: if on is None, flip the current state
+    if turn_on is None:
+      turn_on = not await hue_client.are_lights_on(target_type, target_id)
+      logger.debug(f"Toggle resolved to: {'on' if turn_on else 'off'}")
+
     # Control lights based on target type
-    if target_type == "ALL":
-      action = await hue_client.control_all_lights(turn_on)
-    elif target_type == "GROUP":
+    if target_type == "GROUP" and target_id is not None:
       action = await hue_client.control_group(target_id, turn_on)
-    elif target_type == "LIGHT":
+    elif target_type == "LIGHT" and target_id is not None:
       action = await hue_client.control_light(target_id, turn_on)
     else:
-      action = await hue_client.control_all_lights(turn_on)
+      # No specific target — loop through every group
+      results = []
+      for group in config.groups:
+        result = await hue_client.control_group(group.id, turn_on)
+        results.append(result)
+      action = "\n".join(results)
 
     return action
 

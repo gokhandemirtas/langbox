@@ -60,7 +60,7 @@ Stock prices and financial market information
 ---
 
 ### 4. TRANSPORTATION
-Directions and travel routes between locations (uses Google Maps API)
+Directions and travel routes between TWO locations (uses Google Maps API). ONLY for navigation/directions requests, NOT for questions about countries, cities, or geography.
 
 **Examples:**
 - "how do I get from Putney to Chelsea"
@@ -69,7 +69,15 @@ Directions and travel routes between locations (uses Google Maps API)
 - "how to get to Oxford Street"
 - "navigate to Central London"
 
-**Keywords:** how do I get, directions, route, navigate, travel from, go from, get to, way to
+**NOT TRANSPORTATION (these are INFORMATION_QUERY):**
+- "list all countries that speak Turkish" → INFORMATION_QUERY
+- "what is the capital of France" → INFORMATION_QUERY
+- "which countries are in Europe" → INFORMATION_QUERY
+- "how far is the moon" → INFORMATION_QUERY
+
+**Keywords:** directions, route, navigate, travel from, go from, get to, way to
+
+**Important:** TRANSPORTATION requires the user to want to physically travel or get directions. Questions ABOUT countries, cities, languages, or geography are INFORMATION_QUERY
 
 ---
 
@@ -96,12 +104,17 @@ Timers, reminders, and alarms (NOT physical devices). Also handles listing/viewi
 
 **Keywords:** timer, reminder, alarm clock, set alarm, remind me, in X minutes, set timer, start timer, list reminders, my calendar, my schedule, show reminders, check reminders
 
-**Important:** "timer", "reminder", "alarm clock", "my calendar", and "my schedule" are ALWAYS REMINDER intent, NOT HOME_CONTROL
+**NOT REMINDER (these are INFORMATION_QUERY):**
+- "can you help me bake a cake" → INFORMATION_QUERY
+- "help me understand quantum physics" → INFORMATION_QUERY
+- "can you help me with math" → INFORMATION_QUERY
+
+**Important:** "timer", "reminder", "alarm clock", "my calendar", and "my schedule" are ALWAYS REMINDER. But "help me" or "can you help" requests are NOT REMINDER — they are INFORMATION_QUERY unless they explicitly mention timers, reminders, or alarms
 
 ---
 
 ### 6. INFORMATION_QUERY
-General knowledge questions and information lookup
+General knowledge questions, information lookup, current events, and how-to questions
 
 **Examples:**
 - "what is the capital of France"
@@ -111,21 +124,48 @@ General knowledge questions and information lookup
 - "convert 10 miles to kilometers"
 - "2+2 ?"
 - "what is the distance between earth and moon"
+- "can I freeze cooked rice"
+- "how to tie a tie"
+- "may I use olive oil instead of butter"
+- "when to plant tomatoes"
+- "what's happening in the news"
+- "who invented the telephone"
+- "why is the sky blue"
+- "is it safe to eat raw eggs"
+- "can you help me bake a cake"
+- "help me understand how engines work"
 
-**Keywords:** what is, who is, how to, define, explain, tell me about, convert
+**Keywords:** what is, who is, how to, how do, can I, can you, may I, when to, why, define, explain, tell me about, convert, is it, what are, what's happening, help me
 
 ---
 
 ### 7. GREETING
-Greetings and casual conversation starters
+Greetings, casual conversation, feedback, and any message directed at the assistant itself
 
 **Examples:**
 - "hello"
 - "hi"
 - "good morning"
 - "hey there"
+- "how are you"
+- "what are you thinking"
+- "what's on your mind"
+- "are you alive"
+- "what can you do"
+- "who are you"
+- "tell me about yourself"
+- "hello how are you doing"
+- "what's up"
+- "you were wrong about that"
+- "previously you said X, that's incorrect"
+- "thanks for the help"
+- "good job"
+- "you're not very smart"
+- "I disagree with your answer"
 
-**Keywords:** hello, hi, hey, good morning, good afternoon, good evening
+**Keywords:** hello, hi, hey, good morning, good afternoon, good evening, how are you, what are you, who are you, what can you do, tell me about yourself, you were, you said, thank you, thanks, good job, I disagree, you're wrong, previously you
+
+**Important:** Any message directed at the assistant itself — greetings, feedback, corrections, compliments, or complaints about previous answers — is GREETING
 
 ---
 
@@ -139,9 +179,13 @@ Greetings and casual conversation starters
 
 4. **Be specific over general**: If a query clearly matches a specific category (HOME_CONTROL, WEATHER, etc.)
 
-5. **Default to INFORMATION_QUERY**: When uncertain between categories, if it's a question, use INFORMATION_QUERY
+5. **Questions default to INFORMATION_QUERY**: Queries starting with "can I", "how to", "how do", "may I", "what is", "when to", "why", "is it", "list", "which" are INFORMATION_QUERY unless they clearly match another category (e.g. "how is the weather" = WEATHER)
 
-6. **Single intent only**: Choose the MOST relevant intent, even if multiple could apply
+6. **TRANSPORTATION requires navigation intent**: Only use TRANSPORTATION when the user wants directions or a route to travel. Questions about countries, cities, geography, or locations are INFORMATION_QUERY
+
+7. **Feedback/conversation about the assistant = GREETING**: If the user is talking TO the assistant (correcting it, thanking it, commenting on a previous answer), it is GREETING, NOT HOME_CONTROL or any other category
+
+8. **Single intent only**: Choose the MOST relevant intent, even if multiple could apply
 
 ## Response Format
 
@@ -172,6 +216,36 @@ You: REMINDER
 
 User: "how is the weather"
 You: WEATHER
+
+User: "can I freeze cooked rice"
+You: INFORMATION_QUERY
+
+User: "how to tie a tie"
+You: INFORMATION_QUERY
+
+User: "what is photosynthesis"
+You: INFORMATION_QUERY
+
+User: "when to plant tomatoes"
+You: INFORMATION_QUERY
+
+User: "may I use honey instead of sugar"
+You: INFORMATION_QUERY
+
+User: "you were wrong about that"
+You: GREETING
+
+User: "previously you said sound travels in vacuum, that's incorrect"
+You: GREETING
+
+User: "thanks for the help"
+You: GREETING
+
+User: "can you help me bake a cake"
+You: INFORMATION_QUERY
+
+User: "help me understand how batteries work"
+You: INFORMATION_QUERY
 """
 
   return prompt
