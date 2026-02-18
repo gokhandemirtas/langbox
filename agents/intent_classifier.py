@@ -17,7 +17,7 @@ async def run_intent_classifier():
   user_query = input("\n \nHow may I assist? \n \n")
 
   # Use structured output to guarantee a valid intent classification
-  logger.debug(f"Invoking intent classifier {os.environ['MODEL_QWEN2.5']}")
+  logger.debug("Invoking primary intent classifier")
   result = generate_structured_output(
     model_name=os.environ["MODEL_QWEN2.5"],
     user_prompt=user_query,

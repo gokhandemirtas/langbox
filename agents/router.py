@@ -6,6 +6,7 @@ from handlers.chat.handler_chat import handle_general_chat, handle_greeting
 from handlers.finance.handler_finance import handle_finance_stocks
 from handlers.home_control.handler_home_control import handle_home_control
 from handlers.information.handler_information import handle_information_query
+from handlers.newsfeed.handler_newsfeed import handle_newsfeed
 from handlers.reminder.handler_reminder import handle_reminder
 from handlers.transportation.handler_transportation import handle_transportation
 from handlers.weather.handler_weather import handle_weather
@@ -31,6 +32,7 @@ async def route_intent(intent: str, query: str) -> str:
     "CALENDAR_SCHEDULE",
     "REMINDER",
     "INFORMATION_QUERY",
+    "NEWSFEED",
     "GREETING",
   ]
 
@@ -65,6 +67,7 @@ async def route_intent(intent: str, query: str) -> str:
     "TRANSPORTATION": handle_transportation,
     "REMINDER": handle_reminder,
     "INFORMATION_QUERY": handle_information_query,
+    "NEWSFEED": handle_newsfeed,
     "GREETING": handle_greeting,
     "GENERAL_CHAT": handle_general_chat,
   }

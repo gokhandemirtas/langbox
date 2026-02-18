@@ -12,6 +12,7 @@ class IntentResponse(BaseModel):
     "FINANCE_STOCKS",
     "TRANSPORTATION",
     "REMINDER",
+    "NEWSFEED",
     "INFORMATION_QUERY",
     "GREETING",
   ] = Field(..., description="The classified intent category")

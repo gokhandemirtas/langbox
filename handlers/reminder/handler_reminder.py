@@ -25,7 +25,7 @@ def _classify_intent(query: str) -> dict:
   """
   try:
     result = generate_structured_output(
-      model_name=os.environ["MODEL_QWEN3"],
+      model_name=os.environ["MODEL_QWEN2.5"],
       user_prompt=query,
       system_prompt=reminderIntentPrompt,
       pydantic_model=ReminderIntentResponse,
@@ -64,7 +64,7 @@ async def handle_reminder(query: str) -> str:
   datetime_str = intent.get("datetime", "")
   description = intent.get("description", "")
 
-  if reminder_type and datetime_str and description:
+  if reminder_type:
     logger.debug(
       f"""Detected secondary intent,
       Type: {reminder_type}\n
@@ -79,12 +79,20 @@ async def handle_reminder(query: str) -> str:
         return await handle_list_reminders()
 
       case "TIMER":
-        logger.debug(f"Timer request: {description}")
-        return await handle_timer(datetime_str, description)
+        if datetime_str and description:
+          logger.debug(f"Timer request: {description}")
+          return await handle_timer(datetime_str, description)
+        else:
+          logger.error("Date or description missing from TIMER request")
+          return "Date or description missing"
 
       case "REMINDER":
-        logger.debug(f"Creating reminder: {datetime_str} - {description}")
-        return await handle_create_reminder(datetime_str, description)
+        if datetime_str and description:
+          logger.debug(f"Creating reminder: {datetime_str} - {description}")
+          return await handle_create_reminder(datetime_str, description)
+        else:
+          logger.error("Date or description missing from CREATE REMINDER request")
+          return "Date or description missing"
 
       case _:
         return "Could not determine if this is a timer or reminder request."

@@ -1,6 +1,6 @@
-"""Handler for listing today's reminders."""
+"""Handler for listing upcoming reminders."""
 
-from datetime import datetime, time
+from datetime import datetime, timedelta
 
 from loguru import logger
 
@@ -8,35 +8,31 @@ from db.schemas import Reminders
 
 
 async def handle_list_reminders() -> str:
-  """List all reminders scheduled for today.
+  """List all reminders from today through the next 7 days.
 
   Returns:
-      Formatted string with today's reminders or message if none found
+      Formatted string with upcoming reminders or message if none found
   """
   try:
-    # Get today's date range (start and end of day)
-    today = datetime.now().date()
-    start_of_day = datetime.combine(today, time.min)
-    end_of_day = datetime.combine(today, time.max)
+    now = datetime.now()
+    end = datetime.combine((now + timedelta(weeks=1)).date(), datetime.max.time())
 
-    # Query reminders for today that aren't completed
     reminders = await Reminders.find(
-      Reminders.reminder_datetime >= start_of_day,
-      Reminders.reminder_datetime <= end_of_day,
+      Reminders.reminder_datetime >= now,
+      Reminders.reminder_datetime <= end,
       Reminders.is_completed == False,
-    ).to_list()
+    ).sort("+reminder_datetime").to_list()
 
     if not reminders:
-      return "You have no reminders scheduled for today."
+      return "You have no upcoming reminders for the next 7 days."
 
-    # Format the reminders list
     reminder_lines = []
     for idx, reminder in enumerate(reminders, 1):
-      time_str = reminder.reminder_datetime.strftime("%I:%M %p")
-      reminder_lines.append(f"{idx}. {time_str} - {reminder.description}")
+      date_str = reminder.reminder_datetime.strftime("%a %d %b, %I:%M %p")
+      reminder_lines.append(f"{idx}. {date_str} - {reminder.description}")
 
-    result = "Your reminders for today:\n" + "\n".join(reminder_lines)
-    logger.debug(f"Found {len(reminders)} reminders for today")
+    result = "Your upcoming reminders:\n" + "\n".join(reminder_lines)
+    logger.debug(f"Found {len(reminders)} upcoming reminders")
     return result
 
   except Exception as e:

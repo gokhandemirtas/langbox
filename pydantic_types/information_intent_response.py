@@ -4,7 +4,6 @@ from pydantic import BaseModel, Field
 
 
 class QueryType(str, Enum):
-  current_events = "current_events"
   contextual = "contextual"
   general_knowledge = "general_knowledge"
 
@@ -14,8 +13,7 @@ class InformationIntentResponse(BaseModel):
 
   query_type: QueryType = Field(
     ...,
-    description="Type of query: 'current_events' for recent news/happenings, "
-    "'contextual' for time/date queries, "
+    description="Type of query: 'contextual' for time/date queries, "
     "'general_knowledge' for factual questions",
   )
   keyword: str = Field(

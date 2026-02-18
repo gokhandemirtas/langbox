@@ -1,3 +1,4 @@
+import asyncio
 import os
 from datetime import datetime, timedelta
 
@@ -29,7 +30,7 @@ class HueBridgeClient:
         return username_doc.hueUsername
       else:
         logger.debug("Hue Bridge username not found, retrieving")
-        username = Hue.connect(bridge_ip=os.environ["HUE_BRIDGE_IP"])
+        username = await asyncio.to_thread(Hue.connect, bridge_ip=os.environ["HUE_BRIDGE_IP"])
         newRecord = Credentials(
           hueUsername=username,
         )
@@ -47,7 +48,7 @@ class HueBridgeClient:
     """
     try:
       username = await self._get_hue_username()
-      hue_instance = Hue(bridge_ip=os.environ["HUE_BRIDGE_IP"], username=username)
+      hue_instance = await asyncio.to_thread(Hue, bridge_ip=os.environ["HUE_BRIDGE_IP"], username=username)
       return hue_instance
 
     except Exception as error:
@@ -66,7 +67,7 @@ class HueBridgeClient:
     logger.debug("Syncing Hue configuration from bridge")
 
     # Fetch lights from SDK
-    lights = instance.get_lights()
+    lights = await asyncio.to_thread(instance.get_lights)
     lights_list = []
     for light in lights:
       lights_list.append(
@@ -81,7 +82,7 @@ class HueBridgeClient:
       )
 
     # Fetch groups from SDK
-    groups = instance.get_groups()
+    groups = await asyncio.to_thread(instance.get_groups)
     groups_list = []
     for group in groups:
       groups_list.append(
@@ -183,13 +184,14 @@ class HueBridgeClient:
       raise Exception("Failed to connect to Hue bridge")
 
     if target_type == "LIGHT" and target_id is not None:
-      light = self._instance.get_light(id_=target_id)
+      light = await asyncio.to_thread(self._instance.get_light, id_=target_id)
       return light.is_on
     elif target_type == "GROUP" and target_id is not None:
-      group = self._instance.get_group(id_=target_id)
+      group = await asyncio.to_thread(self._instance.get_group, id_=target_id)
       return group.is_on
     else:
-      return any(light.is_on for light in self._instance.get_lights())
+      lights = await asyncio.to_thread(self._instance.get_lights)
+      return any(light.is_on for light in lights)
 
   async def control_light(self, light_id: int, turn_on: bool) -> str:
     """Control a specific light.
@@ -207,8 +209,8 @@ class HueBridgeClient:
     if not self._instance:
       raise Exception("Failed to connect to Hue bridge")
 
-    light = self._instance.get_light(id_=light_id)
-    light.on() if turn_on else light.off()
+    light = await asyncio.to_thread(self._instance.get_light, id_=light_id)
+    await asyncio.to_thread(light.on if turn_on else light.off)
     return f"{light.name} turned {'on' if turn_on else 'off'}"
 
   async def control_group(self, group_id: int, turn_on: bool) -> str:
@@ -227,8 +229,8 @@ class HueBridgeClient:
     if not self._instance:
       raise Exception("Failed to connect to Hue bridge")
 
-    group = self._instance.get_group(id_=group_id)
-    group.on() if turn_on else group.off()
+    group = await asyncio.to_thread(self._instance.get_group, id_=group_id)
+    await asyncio.to_thread(group.on if turn_on else group.off)
     return f"{group.name} lights turned {'on' if turn_on else 'off'}"
 
   async def control_all_lights(self, turn_on: bool) -> str:
@@ -246,5 +248,5 @@ class HueBridgeClient:
     if not self._instance:
       raise Exception("Failed to connect to Hue bridge")
 
-    self._instance.on() if turn_on else self._instance.off()
+    await asyncio.to_thread(self._instance.on if turn_on else self._instance.off)
     return f"All lights turned {'on' if turn_on else 'off'}"

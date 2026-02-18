@@ -6,7 +6,6 @@ informationIntentPrompt = """
     ## Task
     1. Determine the query category:
        - **contextual**: Questions about current time, date, or day of week
-       - **current_events**: Questions about recent news, current happenings, breaking news, what's going on in the world
        - **general_knowledge**: Factual questions the model can answer (science, math, definitions, history, how things work)
     2. Extract the core keyword accordingly.
 
@@ -19,28 +18,11 @@ informationIntentPrompt = """
     }
 
     **Fields:**
-    - query_type: One of "current_events", "contextual", or "general_knowledge"
+    - query_type: One of "contextual" or "general_knowledge"
     - keyword: For "general_knowledge" queries, the core topic.
       For "contextual" queries, one of: "current_time", "current_date", "current_day".
-      For "current_events" queries, the news topic or "general" if no specific topic.
 
     ## Examples
-
-    **User:** "What's happening in the news today?"
-    **Response:**
-    {"query_type": "current_events", "keyword": "general"}
-
-    **User:** "Any news about the earthquake?"
-    **Response:**
-    {"query_type": "current_events", "keyword": "earthquake"}
-
-    **User:** "What's going on in the world?"
-    **Response:**
-    {"query_type": "current_events", "keyword": "general"}
-
-    **User:** "Latest news about AI"
-    **Response:**
-    {"query_type": "current_events", "keyword": "AI"}
 
     **User:** "What time is it?"
     **Response:**
@@ -76,11 +58,10 @@ informationIntentPrompt = """
 
     *GUIDELINES:*
     1- Classify time, date, and day-of-week questions as "contextual".
-    2- Classify questions about recent news, current events, or what's happening now as "current_events".
-    3- Classify all other factual/knowledge questions as "general_knowledge".
-    4- Extract the most specific and searchable keyword from the query.
-    5- Do NOT include filler words like "tell me about" or "what is" in the keyword.
-    6- Return ONLY valid JSON, no additional text. Do NOT use Markdown in your response.
+    2- Classify all other factual/knowledge questions as "general_knowledge".
+    3- Extract the most specific and searchable keyword from the query.
+    4- Do NOT include filler words like "tell me about" or "what is" in the keyword.
+    5- Return ONLY valid JSON, no additional text. Do NOT use Markdown in your response.
   """
 
 generalKnowledgePrompt = """

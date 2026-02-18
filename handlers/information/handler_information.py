@@ -1,13 +1,11 @@
 import os
-from datetime import date, datetime
+from datetime import datetime
 
-import feedparser
 import wikipedia
 from langchain_core.messages import HumanMessage, SystemMessage
 from loguru import logger
 
 from agents.agent_factory import create_llm
-from db.schemas import Newsfeed
 from prompts.information_prompt import generalKnowledgePrompt, informationIntentPrompt
 from pydantic_types.information_intent_response import (
   GeneralKnowledgeResponse,
@@ -15,7 +13,6 @@ from pydantic_types.information_intent_response import (
 )
 from utils.llm_structured_output import generate_structured_output
 
-BBC_RSS_URL = "http://feeds.bbci.co.uk/news/rss.xml"
 CONFIDENCE_THRESHOLD = 7
 
 
@@ -77,110 +74,6 @@ def _search_wiki(keyword: str) -> str:
     return f"No Wikipedia article found for '{keyword}'."
 
 
-async def _fetch_news(keyword: str) -> str:
-  """Fetch news from DB cache (if today's feed exists) or BBC RSS feed.
-
-  Args:
-      keyword: The topic to filter news by, or 'general' for top headlines
-
-  Returns:
-      Formatted string of matching news headlines and summaries
-  """
-  today = date.today()
-
-  cached = await Newsfeed.find_one(Newsfeed.datestamp == today)
-  if cached:
-    logger.debug("Using cached newsfeed from database")
-    return _filter_news_content(cached.content, keyword)
-
-  try:
-    feed = feedparser.parse(BBC_RSS_URL)
-    if feed.bozo and not feed.entries:
-      logger.warning(f"RSS feed parse error: {feed.bozo_exception}")
-      return "Unable to fetch current news at this time."
-
-    entries = feed.entries[:20]
-    results = []
-    for entry in entries:
-      title = entry.get("title", "No title")
-      summary = entry.get("summary", "No summary available")
-      results.append(f"- {title}: {summary}")
-
-    full_content = "\n".join(results)
-
-    newsfeed = Newsfeed(datestamp=today, content=full_content)
-    await newsfeed.insert()
-    logger.debug("Saved newsfeed to database")
-
-    return _filter_news_content(full_content, keyword)
-  except Exception as e:
-    logger.error(f"Failed to fetch RSS feed: {e}")
-    return "Unable to fetch current news at this time."
-
-
-def _filter_news_content(content: str, keyword: str) -> str:
-  """Filter pre-formatted news content by keyword.
-
-  Args:
-      content: Full newsfeed content (one '- title: summary' per line)
-      keyword: The topic to filter by, or 'general' for top headlines
-
-  Returns:
-      Filtered news lines
-  """
-  lines = content.strip().split("\n")
-
-  if keyword.lower() == "general":
-    return "\n".join(lines[:5])
-
-  keyword_lower = keyword.lower()
-  filtered = [line for line in lines if keyword_lower in line.lower()]
-
-  if filtered:
-    return "\n".join(filtered[:5])
-
-  logger.debug(f"No entries matching '{keyword}', returning top headlines")
-  return "\n".join(lines[:5])
-
-
-async def _handle_current_events(query: str, keyword: str) -> str:
-  """Handle current events queries using BBC News RSS feed.
-
-  Args:
-      query: The user's original query
-      keyword: The news topic to search for
-
-  Returns:
-      Summarized news response
-  """
-  news_content = await _fetch_news(keyword)
-  logger.debug(f"Fetched news for '{keyword}': {news_content[:200]}...")
-
-  llm = create_llm(
-    model_name=os.environ.get("MODEL_QWEN2.5"),
-    temperature=0.3,
-    max_tokens=1024,
-  )
-
-  system_prompt = f"""You are a news summarization agent. Based on the following news headlines and summaries, provide a concise and informative response to the user's question.
-
-    News content:
-    {news_content}
-
-    IMPORTANT RULES:
-    - Summarize the relevant news into a clear, conversational response.
-    - Do NOT add any facts or details not present in the news content.
-    - If no relevant news was found, say so honestly.
-  """
-
-  response = await llm.ainvoke([
-    SystemMessage(content=system_prompt),
-    HumanMessage(content=query),
-  ])
-
-  return response.content
-
-
 def _handle_general_knowledge(query: str, keyword: str) -> tuple[str, bool]:
   """Handle general knowledge queries with confidence-based Wikipedia fallback.
 
@@ -213,7 +106,6 @@ async def handle_information_query(query: str) -> str:
   """Handle general knowledge and information lookup queries.
 
   Routes to appropriate sub-handler based on intent classification:
-  - current_events: BBC News RSS feed
   - contextual: time/date/day responses
   - general_knowledge: LLM with Wikipedia fallback
 
@@ -232,9 +124,6 @@ async def handle_information_query(query: str) -> str:
   if intent.query_type.value == "contextual":
     return _get_contextual_answer(intent.keyword)
 
-  if intent.query_type.value == "current_events":
-    return await _handle_current_events(query, intent.keyword)
-
   if intent.query_type.value == "general_knowledge":
     answer, needs_summarization = _handle_general_knowledge(query, intent.keyword)
 
@@ -251,7 +140,7 @@ async def handle_information_query(query: str) -> str:
         {answer}
 
         IMPORTANT RULES:
-        - Summarize the facts into bullet points (use the dash sign: - to indicate each bullet point), like a news anchor on TV
+        - Summarize the content into bullet points (use the dash sign: - to indicate each bullet point)
         - Do NOT add any facts, details, or context that are not present in the Text to be summarized
     """
 

@@ -62,6 +62,10 @@ def _play(audioFile: str):
 
 
 def speak(text: str, voice_id: str = active_voice_id):
+  if not text:
+    logger.warning("No text provided for TTS, skipping")
+    return
+
   tts_model = TTSModel.load_model(temp=0.5, lsd_decode_steps=5, eos_threshold=-3.0)
   try:
     start_time = time.time()
