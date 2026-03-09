@@ -21,12 +21,15 @@ class SuppressStderr:
         os.close(self.devnull)
 
 
-async def main():
+async def main(verbose: bool = False):
 
   import logging
   import time
 
   from loguru import logger
+
+  logger.remove()
+  logger.add(sys.stderr, level="DEBUG" if verbose else "INFO")
 
   from agents.intent_classifier import run_intent_classifier
   from daily_routines import run_daily_routines
@@ -63,4 +66,4 @@ async def main():
 
 if __name__ == "__main__":
   import asyncio
-  asyncio.run(main())
+  asyncio.run(main(verbose="--verbose" in sys.argv))

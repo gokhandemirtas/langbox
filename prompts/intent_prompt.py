@@ -51,21 +51,24 @@ General knowledge, factual questions, how-to questions.
 - **Keywords:** what is, who is, how to, can I, may I, why, define, explain, convert, help me
 
 ### 8. GREETING
-Greetings, feedback, and any message directed at the assistant itself.current event
+Greetings, feedback, follow-up comparisons, and any message directed at the assistant itself.
 - "hello", "good morning", "how are you", "who are you", "thanks for the help", "you were wrong about that"
-- **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree
+- Follow-up questions with no domain keywords: "which one is warmer?", "which is better?", "what did you just say?"
+- **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, which one
 
 ## Classification Rules
 
 1. "lights", "lamp", "bulb" + on/off → always HOME_CONTROL
 2. "timer", "reminder", "alarm", "my calendar", "my schedule" → always REMINDER
 3. "news", "headlines", "current events", "what's happening" → always NEWSFEED
-4. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
-5. "help me" / "can you help" → INFORMATION_QUERY unless it mentions timers/reminders
-6. Messages directed at the assistant (feedback, corrections, greetings) → GREETING
-7. When in doubt among general questions → INFORMATION_QUERY
-8. Choose the single MOST specific intent
-9. If the query contains the word "news" (in any form), ALWAYS classify as NEWSFEED.
+4. "weather", "forecast", "temperature", "rain", "snow", "humid" anywhere in the query → always WEATHER
+5. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
+6. "help me" / "can you help" → INFORMATION_QUERY unless it mentions timers/reminders
+7. Messages directed at the assistant (feedback, corrections, greetings) → GREETING
+8. Follow-up questions without any domain keyword ("which one", "which is better", "what about the other one") → GREETING
+9. When in doubt among general questions → INFORMATION_QUERY
+9. Choose the single MOST specific intent
+10. If the query contains the word "news" (in any form), ALWAYS classify as NEWSFEED.
 
 
 ## Response Format
@@ -77,6 +80,9 @@ Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER
 Examples:
 User: "turn on the lights" → HOME_CONTROL
 User: "will it rain today" → WEATHER
+User: "what is the weather in London" → WEATHER
+User: "what is the weather in Paris" → WEATHER
+User: "weather forecast for this weekend" → WEATHER
 User: "check Tesla stock" → FINANCE_STOCKS
 User: "directions to the airport" → TRANSPORTATION
 User: "set a timer for 10 minutes" → REMINDER
@@ -87,6 +93,9 @@ User: "can you help me bake a cake" → INFORMATION_QUERY
 User: "what is the capital of France" → INFORMATION_QUERY
 User: "hello" → GREETING
 User: "you were wrong about that" → GREETING
+User: "which one is warmer?" → GREETING
+User: "which city is better?" → GREETING
+User: "what about the other one?" → GREETING
 """
 
   return prompt

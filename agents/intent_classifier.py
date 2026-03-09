@@ -35,7 +35,7 @@ async def run_intent_classifier():
 
   # Process through conversational agent and save to DB
   logger.info(handler_response)
-  speak(handler_response)
+  # speak(handler_response)
 
   elapsed_time = time.time() - start_time
   logger.info(

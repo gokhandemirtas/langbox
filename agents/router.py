@@ -3,6 +3,7 @@ import asyncio
 from loguru import logger
 
 from handlers.chat.handler_chat import handle_general_chat, handle_greeting
+from handlers.conversation.handler_conversation import handle_conversation
 from handlers.finance.handler_finance import handle_finance_stocks
 from handlers.home_control.handler_home_control import handle_home_control
 from handlers.information.handler_information import handle_information_query
@@ -52,9 +53,10 @@ async def route_intent(intent: str, query: str) -> str:
     logger.warning(f"Could not extract valid intent from response: {intent[:200]}...")
     logger.debug("Falling back to general chat handler")
     if asyncio.iscoroutinefunction(handle_general_chat):
-      return await handle_general_chat(query=query)
+      handler_response = await handle_general_chat(query=query)
     else:
-      return handle_general_chat(query=query)
+      handler_response = handle_general_chat(query=query)
+    return await handle_conversation(query, handler_response)
 
   # Log the detected intent
   logger.debug(f"Detected primary intent: {detected_intent}, from {query}")
@@ -76,12 +78,14 @@ async def route_intent(intent: str, query: str) -> str:
   if handler:
     # Check if handler is async and await it
     if asyncio.iscoroutinefunction(handler):
-      return await handler(query=query)
+      handler_response = await handler(query=query)
     else:
-      return handler(query=query)
+      handler_response = handler(query=query)
   else:
     logger.warning(f"No handler found for intent: {detected_intent}")
     if asyncio.iscoroutinefunction(handle_general_chat):
-      return await handle_general_chat(query=query)
+      handler_response = await handle_general_chat(query=query)
     else:
-      return handle_general_chat(query=query)
+      handler_response = handle_general_chat(query=query)
+
+  return await handle_conversation(query, handler_response)

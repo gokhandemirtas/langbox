@@ -14,14 +14,22 @@ from pydantic_types.weather_intent_response import WeatherIntentResponse
 from utils.llm_structured_output import generate_structured_output
 from utils.weather_client import fetch_weather_forecast
 
-weather_agent = create_llm_agent(
-  model_name=os.environ["MODEL_QWEN2.5"],
-  temperature=0.3,
-  top_p=0.9,
-  top_k=40,
-  n_ctx=16384,
-  checkpointer=InMemorySaver(),
-)
+_weather_agent = None
+
+
+def _get_weather_agent():
+    global _weather_agent
+    if _weather_agent is None:
+        _weather_agent = create_llm_agent(
+            model_name=os.environ["MODEL_QWEN2.5"],
+            temperature=0.1,
+            top_p=0.5,
+            top_k=20,
+            max_tokens=120,
+            n_ctx=16384,
+            checkpointer=InMemorySaver(),
+        )
+    return _weather_agent
 
 
 def _comment_on_data(query: str, data: dict) -> str:
@@ -43,13 +51,7 @@ def _comment_on_data(query: str, data: dict) -> str:
 Weather Data:
 {data_str}
 
-Please comment on the weather data provided above,in order to answer users query.
-Keep your answer short and concise 
-
-Example:
-- Today in Paris it's mild and sunny, 20 degrees during the day and 8 in the evening.
-
-"""
+Answer the user's query in 1-2 sentences using only the data above. Do not add any information not present in the data."""
 
   messages = [
     SystemMessage(content=weather_comment_prompt),
@@ -57,9 +59,14 @@ Example:
   ]
 
   config = {"configurable": {"thread_id": str(uuid.uuid4())}}
-  response = weather_agent.invoke({"messages": messages}, config=config)
+  response = _get_weather_agent().invoke({"messages": messages}, config=config)
 
   result = response["messages"][-1].content.strip()
+
+  # Hard-cap to 2 sentences — cached LLM instances may ignore max_tokens
+  sentences = result.split(". ")
+  if len(sentences) > 2:
+    result = ". ".join(sentences[:2]).rstrip(".") + "."
 
   return result
 
@@ -86,7 +93,13 @@ def _classify_intent(query: str) -> dict:
       pydantic_model=WeatherIntentResponse,
     )
 
-    return result.model_dump()
+    location = result.location
+    # Reject hallucinated locations: the city must actually appear in the query
+    if location and location.lower() != "unknown_location" and location.lower() not in query.lower():
+      logger.debug(f"Rejecting hallucinated location '{location}' not found in query")
+      location = "UNKNOWN_LOCATION"
+
+    return {"location": location, "period": result.period}
 
   except Exception as e:
     logger.error(f"Failed to generate structured output. Error: {e}")
@@ -143,9 +156,9 @@ async def handle_weather(query: str) -> str:
 
   logger.debug(f"Detected secondary intent, Location: {location}, period: {time_period}")
 
-  # Check if location is missing and ask the user
+  # Check if location is missing — signal handle_conversation to use session memory
   if location == "UNKNOWN_LOCATION" or not location:
-    return "Could not determine the location"
+    return "No specific location was mentioned. Please use the conversation history to answer the user's question."
 
   # Check if period is missing and ask the user
   if not time_period:
