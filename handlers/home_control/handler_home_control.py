@@ -14,7 +14,7 @@ from utils.llm_structured_output import generate_structured_output
 def _classify_intent(query: str, lights: str, groups: str) -> dict:
   """Classify user intent and extract home control actions.
 
-  Best results with MODEL_HERMES_2_PRO
+  Best results with MODEL_INTENT_CLASSIFIER
 
   Args:
       query: The user's home control query
@@ -30,7 +30,7 @@ def _classify_intent(query: str, lights: str, groups: str) -> dict:
   """
   try:
     result = generate_structured_output(
-      model_name=os.environ["MODEL_HERMES_2_PRO"],
+      model_name=os.environ["MODEL_INTENT_CLASSIFIER"],
       user_prompt=query,
       system_prompt=f"""Groups: {groups}, Lights: {lights}, {home_control_prompt}""",
       pydantic_model=HomeControlIntentResponse,

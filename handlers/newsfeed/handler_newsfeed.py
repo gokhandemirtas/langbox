@@ -62,7 +62,7 @@ async def handle_newsfeed(query: str) -> str:
   logger.debug(f"Fetched news: {news_content[:200]}...")
 
   llm = create_llm(
-    model_name=os.environ.get("MODEL_QWEN2.5"),
+    model_name=os.environ.get("MODEL_GENERALIST"),
     temperature=0.3,
     max_tokens=1024,
   )

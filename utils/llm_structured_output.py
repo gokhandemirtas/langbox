@@ -28,7 +28,7 @@ def generate_structured_output(
   """Generate structured output using outlines with llama.cpp backend.
 
   Args:
-      model_name: Name of the model (e.g., MODEL_QWEN2.5 environment variable value)
+      model_name: Name of the model (e.g., MODEL_PHI4 environment variable value)
       user_prompt: The user's query to process
       system_prompt: System instructions/prompt for the model
       pydantic_model: Pydantic model class defining the expected output structure

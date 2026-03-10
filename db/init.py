@@ -15,7 +15,7 @@ async def init():
     logger.debug(f"Initiating Mongo DB with collections: {[col.__name__ for col in collections]}")
     client = AsyncMongoClient(
       f"""mongodb://{os.environ["MONGODB_USER"]}:{os.environ["MONGODB_PASSWORD"]}@{os.environ["MONGODB_HOST"]}:{os.environ["MONGODB_PORT"]}""",
-      timeoutMS=1000,
+      timeoutMS=5000,
     )
 
     await init_beanie(database=client.langbox, document_models=collections)

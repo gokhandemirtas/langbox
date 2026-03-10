@@ -2,7 +2,7 @@ import asyncio
 
 from loguru import logger
 
-from handlers.chat.handler_chat import handle_general_chat, handle_greeting
+from handlers.chat.handler_chat import handle_general_chat
 from handlers.conversation.handler_conversation import handle_conversation
 from handlers.finance.handler_finance import handle_finance_stocks
 from handlers.home_control.handler_home_control import handle_home_control
@@ -34,7 +34,7 @@ async def route_intent(intent: str, query: str) -> str:
     "REMINDER",
     "INFORMATION_QUERY",
     "NEWSFEED",
-    "GREETING",
+    "CHAT",
   ]
 
   # Extract the intent from the response
@@ -58,6 +58,12 @@ async def route_intent(intent: str, query: str) -> str:
       handler_response = handle_general_chat(query=query)
     return await handle_conversation(query, handler_response)
 
+  # Guard against misclassified HOME_CONTROL: require at least one home-related keyword
+  _HOME_KEYWORDS = {"light", "lights", "lamp", "bulb", "dim", "switch", "turn on", "turn off", "switch on", "switch off", "brightness", "hue", "scene"}
+  if detected_intent == "HOME_CONTROL" and not any(kw in query.lower() for kw in _HOME_KEYWORDS):
+    logger.warning(f"HOME_CONTROL classified but no home keywords found in '{query}' — falling back to CHAT")
+    detected_intent = "CHAT"
+
   # Log the detected intent
   logger.debug(f"Detected primary intent: {detected_intent}, from {query}")
 
@@ -70,8 +76,7 @@ async def route_intent(intent: str, query: str) -> str:
     "REMINDER": handle_reminder,
     "INFORMATION_QUERY": handle_information_query,
     "NEWSFEED": handle_newsfeed,
-    "GREETING": handle_greeting,
-    "GENERAL_CHAT": handle_general_chat,
+    "CHAT": handle_general_chat,
   }
 
   handler = route_map.get(detected_intent)

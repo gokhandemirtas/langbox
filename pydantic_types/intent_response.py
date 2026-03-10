@@ -14,5 +14,5 @@ class IntentResponse(BaseModel):
     "REMINDER",
     "NEWSFEED",
     "INFORMATION_QUERY",
-    "GREETING",
+    "CHAT",
   ] = Field(..., description="The classified intent category")

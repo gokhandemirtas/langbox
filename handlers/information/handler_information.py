@@ -26,7 +26,7 @@ def _classify_intent(query: str) -> InformationIntentResponse:
       InformationIntentResponse with the extracted keyword and query type
   """
   return generate_structured_output(
-    model_name=os.environ["MODEL_QWEN2.5"],
+    model_name=os.environ["MODEL_GENERALIST"],
     user_prompt=query,
     system_prompt=informationIntentPrompt,
     pydantic_model=InformationIntentResponse,
@@ -87,7 +87,7 @@ def _handle_general_knowledge(query: str, keyword: str) -> tuple[str, bool]:
       When confidence is low, Wikipedia content is returned and needs_summarization is True.
   """
   result = generate_structured_output(
-    model_name=os.environ["MODEL_QWEN2.5"],
+    model_name=os.environ["MODEL_GENERALIST"],
     user_prompt=query,
     system_prompt=generalKnowledgePrompt,
     pydantic_model=GeneralKnowledgeResponse,
@@ -131,7 +131,7 @@ async def handle_information_query(query: str) -> str:
       return answer
 
     llm = create_llm(
-      model_name=os.environ.get("MODEL_QWEN2.5"),
+      model_name=os.environ.get("MODEL_GENERALIST"),
       temperature=0.3,
     )
 

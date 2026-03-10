@@ -30,7 +30,7 @@ def parse_env_models(env_path: str = ".env") -> dict[str, str]:
 
   Returns:
       Dict mapping variable name to filename
-      (e.g., {"MODEL_QWEN2.5": "qwen2.5-1.5b-instruct-fp16.gguf"})
+      (e.g., {"MODEL_PHI4": "qwen2.5-1.5b-instruct-fp16.gguf"})
   """
   models = {}
   env_file = Path(env_path)

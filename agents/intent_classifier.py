@@ -19,7 +19,7 @@ async def run_intent_classifier():
   # Use structured output to guarantee a valid intent classification
   logger.debug("Invoking primary intent classifier")
   result = generate_structured_output(
-    model_name=os.environ["MODEL_QWEN2.5"],
+    model_name=os.environ["MODEL_INTENT_CLASSIFIER"],
     user_prompt=user_query,
     system_prompt=intent_prompt(),
     pydantic_model=IntentResponse,
@@ -35,7 +35,7 @@ async def run_intent_classifier():
 
   # Process through conversational agent and save to DB
   logger.info(handler_response)
-  # speak(handler_response)
+  speak(handler_response)
 
   elapsed_time = time.time() - start_time
   logger.info(

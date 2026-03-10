@@ -71,7 +71,7 @@ def _classify_intent(query: str) -> dict:
 
   try:
     result = generate_structured_output(
-      model_name=os.environ["MODEL_QWEN2.5"],
+      model_name=os.environ["MODEL_INTENT_CLASSIFIER"],
       user_prompt=query,
       system_prompt=weatherIntentPrompt,
       pydantic_model=WeatherIntentResponse,

@@ -93,7 +93,7 @@ The application follows a modular agent-based architecture:
 ### Model Configuration
 
 The project uses GGUF quantized models stored in the `models/` directory. Models are referenced via environment variables in `.env`:
-- Primary model: Configured via `MODEL_QWEN2.5` environment variable
+- Primary model: Configured via `MODEL_PHI4` environment variable
 - Backend: llama-cpp-python via LangChain Community
 - Models are lazily initialized for better startup performance
 
@@ -125,7 +125,7 @@ Implementation in `utils/llm_structured_output.py`:
 Example usage (from `handlers/weather/handler_weather.py`):
 ```python
 result = generate_structured_output(
-    model_name=os.environ["MODEL_QWEN2.5"],
+    model_name=os.environ["MODEL_PHI4"],
     user_prompt=query,
     system_prompt=weatherIntentPrompt,
     pydantic_model=WeatherIntentResponse,
@@ -285,7 +285,7 @@ Models are stored in `models/` directory and are not tracked by git.
 When adding new models:
 1. Download GGUF format models (recommended: quantized models like Q5_K_M or Q4_K_M)
 2. Place them in `models/` directory
-3. Add the model path to `.env` file with an appropriate variable name (e.g., `MODEL_QWEN2.5`)
+3. Add the model path to `.env` file with an appropriate variable name (e.g., `MODEL_PHI4`)
 4. Reference the model in code via `os.environ.get('MODEL_NAME')`
 
 **Performance tuning**:
@@ -361,7 +361,7 @@ This allows graceful handling of incomplete queries without restarting the conve
 ## Environment Variables
 
 Required variables in `.env`:
-- `MODEL_QWEN2.5`: Path to the Qwen2.5 GGUF model file (filename only, relative to `models/` directory)
+- `MODEL_PHI4`: Path to the Qwen2.5 GGUF model file (filename only, relative to `models/` directory)
 - `MODEL_LLAMA2_7B`: Path to Llama 2 7B model for home control (e.g., `llama-2-7b-chat.Q3_K_M.gguf`)
 - `MODEL_PATH`: Path to models directory (defaults to `models/` if not specified)
 - `MONGODB_HOST`: MongoDB host (default: localhost)

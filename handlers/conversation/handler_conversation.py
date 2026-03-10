@@ -13,7 +13,7 @@ def _get_conversation_agent():
     global _agent
     if _agent is None:
         _agent = create_llm_agent(
-            model_name=os.environ.get("MODEL_QWEN2.5"),
+            model_name=os.environ.get("MODEL_GENERALIST"),
             max_tokens=3000,
             temperature=0.7,
             top_p=0.9,

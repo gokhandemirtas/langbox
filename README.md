@@ -88,7 +88,7 @@ def my_prompt(query: str) -> str:
 
 # Generate structured output
 result = generate_structured_output(
-    model_name=os.environ["MODEL_QWEN2.5"],
+    model_name=os.environ["MODEL_PHI4"],
     prompt_function=my_prompt,
     pydantic_model=MyResponse,
     query="The answer is hello and 42"
@@ -99,7 +99,7 @@ result = generate_structured_output(
 
 ```python
 result = generate_structured_output(
-    model_name=os.environ["MODEL_QWEN2.5"],
+    model_name=os.environ["MODEL_PHI4"],
     prompt_function=my_prompt,
     pydantic_model=MyResponse,
     query="Extract this data...",
@@ -180,7 +180,7 @@ langbox/
 ### Environment Variables
 
 Required variables in `.env`:
-- `MODEL_QWEN2.5`: Path to Qwen2.5 GGUF model
+- `MODEL_PHI4`: Path to Qwen2.5 GGUF model
 - `MODEL_PATH`: Directory containing model files
 - `MONGODB_HOST`, `MONGODB_PORT`, `MONGODB_USER`, `MONGODB_PASSWORD`: MongoDB configuration
 

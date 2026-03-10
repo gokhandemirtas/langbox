@@ -26,7 +26,7 @@ def create_llm(
     """Create an LLM instance with configurable parameters.
 
     Args:
-        model_name: Model filename (defaults to MODEL_HERMES_2_PRO env var)
+        model_name: Model filename (defaults to MODEL_GENERALIST env var)
         temperature: Sampling temperature (0.0 = deterministic, higher = more random)
         n_ctx: Context window size in tokens
         n_gpu_layers: Number of layers to offload to GPU
@@ -43,18 +43,10 @@ def create_llm(
         Configured LangChain LLM instance
 
     Example:
-        # Use default MODEL_HERMES_2_PRO
-        llm = create_llm()
-
-        # Override with specific model and temperature
-        llm = create_llm(
-            model_name=os.environ['MODEL_QWEN2.5'],
-            temperature=0.0
-        )
+        llm = create_llm(model_name=os.environ['MODEL_GENERALIST'], temperature=0.0)
     """
-    # Use MODEL_HERMES_2_PRO as default, fallback to hardcoded default
     if model_name is None:
-        model_name = os.environ.get('MODEL_HERMES_2_PRO', 'Hermes-2-Pro-Llama-3-8B-Q5_K_M.gguf')
+        model_name = os.environ.get('MODEL_GENERALIST')
 
     return vram_manager.get_or_load_llamacpp(
         model_name=model_name,
@@ -91,7 +83,7 @@ def create_llm_agent(
     """Create an LLM agent with configurable parameters.
 
     Args:
-        model_name: Model filename (defaults to MODEL_HERMES_2_PRO env var)
+        model_name: Model filename (defaults to MODEL_GENERALIST env var)
         temperature: Sampling temperature (0.0 = deterministic, higher = more random)
         n_ctx: Context window size in tokens
         n_gpu_layers: Number of layers to offload to GPU
@@ -108,24 +100,6 @@ def create_llm_agent(
 
     Returns:
         Configured LangChain agent instance
-
-    Example:
-        # Use default MODEL_HERMES_2_PRO
-        agent = create_llm_agent()
-
-        # Override with specific model and temperature
-        agent = create_llm_agent(
-            model_name=os.environ['MODEL_QWEN2.5'],
-            temperature=0.0
-        )
-
-        # Create agent with checkpointer
-        from langgraph.checkpoint.memory import InMemorySaver
-        agent = create_llm_agent(
-            model_name=os.environ['MODEL_QWEN2.5'],
-            temperature=0.0,
-            checkpointer=InMemorySaver()
-        )
     """
     llm = create_llm(
         model_name=model_name,

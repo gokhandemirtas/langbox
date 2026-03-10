@@ -50,10 +50,11 @@ General knowledge, factual questions, how-to questions.
 - "what is photosynthesis", "how to tie a tie", "can I freeze cooked rice", "help me understand engines"
 - **Keywords:** what is, who is, how to, can I, may I, why, define, explain, convert, help me
 
-### 8. GREETING
-Greetings, feedback, follow-up comparisons, and any message directed at the assistant itself.
+### 8. CHAT
+General conversation, greetings, feedback, follow-up comparisons, nonsensical input, and anything that doesn't clearly fit another category.
 - "hello", "good morning", "how are you", "who are you", "thanks for the help", "you were wrong about that"
 - Follow-up questions with no domain keywords: "which one is warmer?", "which is better?", "what did you just say?"
+- Nonsensical or out-of-domain input: "banana elephant purple", "I am ozymandias"
 - **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, which one
 
 ## Classification Rules
@@ -64,18 +65,19 @@ Greetings, feedback, follow-up comparisons, and any message directed at the assi
 4. "weather", "forecast", "temperature", "rain", "snow", "humid" anywhere in the query → always WEATHER
 5. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
 6. "help me" / "can you help" → INFORMATION_QUERY unless it mentions timers/reminders
-7. Messages directed at the assistant (feedback, corrections, greetings) → GREETING
-8. Follow-up questions without any domain keyword ("which one", "which is better", "what about the other one") → GREETING
-9. When in doubt among general questions → INFORMATION_QUERY
-9. Choose the single MOST specific intent
-10. If the query contains the word "news" (in any form), ALWAYS classify as NEWSFEED.
+7. Messages directed at the assistant (feedback, corrections, greetings) → CHAT
+8. Follow-up questions without any domain keyword ("which one", "which is better", "what about the other one") → CHAT
+9. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
+10. When in doubt among general questions → INFORMATION_QUERY
+11. Choose the single MOST specific intent
+12. If the query contains the word "news" (in any form), ALWAYS classify as NEWSFEED.
 
 
 ## Response Format
 
 Respond with EXACTLY ONE WORD — the intent name in uppercase.
 
-Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER, NEWSFEED, INFORMATION_QUERY, GREETING
+Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER, NEWSFEED, INFORMATION_QUERY, CHAT
 
 Examples:
 User: "turn on the lights" → HOME_CONTROL
@@ -91,11 +93,14 @@ User: "what's the latest news" → NEWSFEED
 User: "what is photosynthesis" → INFORMATION_QUERY
 User: "can you help me bake a cake" → INFORMATION_QUERY
 User: "what is the capital of France" → INFORMATION_QUERY
-User: "hello" → GREETING
-User: "you were wrong about that" → GREETING
-User: "which one is warmer?" → GREETING
-User: "which city is better?" → GREETING
-User: "what about the other one?" → GREETING
+User: "hello" → CHAT
+User: "you were wrong about that" → CHAT
+User: "which one is warmer?" → CHAT
+User: "which city is better?" → CHAT
+User: "what about the other one?" → CHAT
+User: "I am ozymandias, destroyer of worlds" → CHAT
+User: "banana elephant purple" → CHAT
+User: "destroyer of ?" → CHAT
 """
 
   return prompt

@@ -23,7 +23,7 @@ _valid_tickers = {entry["ticker"].upper() for entry in _tickers_data}
 def _get_finance_agent():
     """Create a finance agent. Previous LLM instances are freed by the factory."""
     return create_llm_agent(
-        model_name=os.environ['MODEL_LLAMA2_7B'],
+        model_name=os.environ['MODEL_GENERALIST'],
     )
     
 
@@ -45,7 +45,7 @@ def _classify_intent(query: str) -> dict:
     """
     try:
         result = generate_structured_output(
-            model_name=os.environ["MODEL_QWEN2.5"],
+            model_name=os.environ["MODEL_INTENT_CLASSIFIER"],
             user_prompt=query,
             system_prompt=get_finance_intent_prompt(_tickers_data),
             pydantic_model=FinanceIntentResponse,
