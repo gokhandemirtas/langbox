@@ -16,27 +16,30 @@ weatherIntentPrompt = """
 
     **Fields:**
     - location: The city/location name (e.g., "New York", "London", "Tokyo").
-    - period: Either "CURRENT" or "FORECAST"
+    - period: One of "CURRENT", "TODAY", "TOMORROW", "DAY_AFTER", or "FORECAST"
+      - CURRENT: user asks about right now (e.g., "what's the weather", "is it raining now")
+      - TODAY: user explicitly mentions today (e.g., "today's weather", "how is it today")
+      - TOMORROW: user explicitly mentions tomorrow
+      - DAY_AFTER: user mentions the day after tomorrow
+      - FORECAST: user asks for multiple days, a week, or does not specify a time period
 
     ## Examples
-
-    ### Current Weather Queries
-    **User:** "What's the weather like in Seattle?"
-    **Response:**
-    {"location": "Seattle", "period": "CURRENT"}
-
-    **User:** "How's the weather in Paris today?"
-    **Response:**
-    {"location": "Paris", "period": "CURRENT"}
 
     **User:** "Is it raining in London right now?"
     **Response:**
     {"location": "London", "period": "CURRENT"}
 
-    ### Forecast Queries
+    **User:** "How's the weather in Paris today?"
+    **Response:**
+    {"location": "Paris", "period": "TODAY"}
+
     **User:** "What will the weather be like in Tokyo tomorrow?"
     **Response:**
-    {"location": "Tokyo", "period": "FORECAST"}
+    {"location": "Tokyo", "period": "TOMORROW"}
+
+    **User:** "What about the day after tomorrow in Berlin?"
+    **Response:**
+    {"location": "Berlin", "period": "DAY_AFTER"}
 
     **User:** "Will it rain in Boston this week?"
     **Response:**
@@ -45,6 +48,10 @@ weatherIntentPrompt = """
     **User:** "Give me the forecast for Miami"
     **Response:**
     {"location": "Miami", "period": "FORECAST"}
+
+    **User:** "What's the weather like in Seattle?"
+    **Response:**
+    {"location": "Seattle", "period": "FORECAST"}
 
     *GUIDELINES:*
     1- If you fail to identify the location, use "UNKNOWN_LOCATION" for the location field.
@@ -145,6 +152,7 @@ Where:
 - **Be helpful**: If the data shows rain, mention bringing an umbrella. If cold, suggest warm clothing
 - **Read the data carefully**: Extract information from `today.forecast` array - index 0 is today, index 1 is tomorrow, etc.
 - **Parse forecast strings**: Each forecast string contains date, average temp, and comma-separated hourly data
+- **No disclaimers**: Do NOT add caveats, disclaimers, or notes about forecast accuracy or changing conditions
 
 ## Important
 

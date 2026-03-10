@@ -1,7 +1,6 @@
 import os
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
 
 from agents.agent_factory import create_llm_agent
 from memory.session import checkpointer, config
@@ -43,7 +42,5 @@ async def handle_conversation(user_query: str, handler_response: str) -> str:
     agent = _get_conversation_agent()
     response = agent.invoke({"messages": messages}, config=config)
     conversational_response = response["messages"][-1].content.strip()
-
-    logger.info(f"\n{conversational_response}\n")
 
     return conversational_response

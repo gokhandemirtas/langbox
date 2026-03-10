@@ -1,64 +1,99 @@
-import asyncio
+from datetime import datetime
 
-import python_weather
+from loguru import logger
 
 from pydantic_types.weather_forecast import WeatherForecast
+from utils.http_client import HTTPClient
 
-TIMEOUT_SECONDS = 30
+GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+
+WMO_DESCRIPTIONS = {
+  0: "Clear sky",
+  1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+  45: "Fog", 48: "Depositing rime fog",
+  51: "Light drizzle", 53: "Moderate drizzle", 55: "Dense drizzle",
+  61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
+  71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow",
+  77: "Snow grains",
+  80: "Slight showers", 81: "Moderate showers", 82: "Violent showers",
+  85: "Slight snow showers", 86: "Heavy snow showers",
+  95: "Thunderstorm",
+  96: "Thunderstorm with slight hail", 99: "Thunderstorm with heavy hail",
+}
+
+
+def _wmo_desc(code: int) -> str:
+  return WMO_DESCRIPTIONS.get(code, f"code {code}")
 
 
 async def fetch_weather_forecast(location: str) -> WeatherForecast:
-  """Fetch weather forecast for a location.
+  """Fetch weather forecast for a location using Open-Meteo.
 
   Args:
       location: City or location name
 
   Returns:
-      WeatherForecast: Structured weather forecast data with flattened structure
+      WeatherForecast: Structured weather forecast data
 
   Raises:
-      asyncio.TimeoutError: If the request exceeds TIMEOUT_SECONDS
+      ValueError: If location cannot be geocoded
       Exception: If the weather fetch fails
   """
-  return await asyncio.wait_for(_fetch(location), timeout=TIMEOUT_SECONDS)
+  async with HTTPClient() as client:
+    # Step 1: Geocode location name → lat/lon
+    geo = await client.get(GEOCODING_URL, params={"name": location, "count": 1, "language": "en", "format": "json"})
+    results = geo.get("results")
+    if not results:
+      raise ValueError(f"Could not geocode location: {location}")
 
+    result = results[0]
+    lat, lon = result["latitude"], result["longitude"]
+    resolved_name = result.get("name", location)
+    logger.debug(f"Geocoded '{location}' → {resolved_name} ({lat}, {lon})")
 
-async def _fetch(location: str) -> WeatherForecast:
-  """Internal fetch logic."""
-  async with python_weather.Client(unit=python_weather.METRIC) as client:
-    try:
-      weather = await client.get(location)
+    # Step 2: Fetch forecast
+    data = await client.get(FORECAST_URL, params={
+      "latitude": lat,
+      "longitude": lon,
+      "current": "temperature_2m,weather_code",
+      "hourly": "temperature_2m,weather_code",
+      "forecast_days": 3,
+      "timezone": "auto",
+    })
 
-      forecast = []
-    except Exception as e:
-      return e
+  current_temp = int(round(data["current"]["temperature_2m"]))
 
-    # Fetch weather forecast for upcoming days.
-    for daily in weather:
-      hourly_forecasts = []
+  # Build daily forecasts grouped by date
+  hourly_times = data["hourly"]["time"]
+  hourly_temps = data["hourly"]["temperature_2m"]
+  hourly_codes = data["hourly"]["weather_code"]
 
-      # Each daily forecast has their own hourly forecasts.
-      # Format: "HH:MM-HH:MM, XX °C, description, condition"
-      for hourly in daily:
-        time_start = hourly.time.strftime("%H:%M")
-        # Calculate end time (1 hour later)
-        hour_end = (hourly.time.hour + 1) % 24
-        time_end = f"{hour_end:02d}:00"
+  # Group hourly entries by date
+  days: dict[str, list] = {}
+  for i, ts in enumerate(hourly_times):
+    date_str = ts[:10]  # "YYYY-MM-DD"
+    days.setdefault(date_str, []).append((ts, hourly_temps[i], hourly_codes[i]))
 
-        condition = str(hourly.kind).replace("Kind.", "")
-        hourly_str = (
-          f"{time_start}-{time_end}, {hourly.temperature} °C, {hourly.description}, {condition}"
-        )
-        hourly_forecasts.append(hourly_str)
+  forecast = []
+  for date_str, entries in days.items():
+    temps = [t for _, t, _ in entries]
+    avg_temp = int(round(sum(temps) / len(temps)))
+    min_temp = int(round(min(temps)))
+    max_temp = int(round(max(temps)))
 
-      # Format each daily forecast as a string
-      date_str = daily.date.strftime("%Y-%m-%d")
-      hourly_str = ", ".join(hourly_forecasts)
-      daily_str = f"{date_str}, avg temp: {daily.temperature} °C, hourly: {hourly_str}"
-      forecast.append(daily_str)
+    hourly_parts = []
+    for ts, temp, code in entries:
+      hour = datetime.fromisoformat(ts).hour
+      hour_end = (hour + 1) % 24
+      desc = _wmo_desc(code)
+      hourly_parts.append(f"{hour:02d}:00-{hour_end:02d}:00, {int(round(temp))} °C, {desc}")
 
-    return WeatherForecast(
-      location=location,
-      current_temperature=weather.temperature,
-      forecast=forecast,
-    )
+    daily_str = f"{date_str}, avg temp: {avg_temp} °C, low: {min_temp} °C, high: {max_temp} °C, hourly: {', '.join(hourly_parts)}"
+    forecast.append(daily_str)
+
+  return WeatherForecast(
+    location=resolved_name,
+    current_temperature=current_temp,
+    forecast=forecast,
+  )

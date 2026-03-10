@@ -1,74 +1,58 @@
-import json
 import os
-import uuid
+import re
+from collections import Counter
 from datetime import datetime
-
-from langchain_core.messages import HumanMessage, SystemMessage
-from langgraph.checkpoint.memory import InMemorySaver
 from loguru import logger
 
-from agents.agent_factory import create_llm_agent
 from db.schemas import Weather
-from prompts.weather_prompt import weather_comment_prompt, weatherIntentPrompt
+from prompts.weather_prompt import weatherIntentPrompt
 from pydantic_types.weather_intent_response import WeatherIntentResponse
 from utils.llm_structured_output import generate_structured_output
 from utils.weather_client import fetch_weather_forecast
 
-_weather_agent = None
+
+def _get_condition(hourly_str: str) -> str:
+  """Derive the dominant weather condition from the hourly string without LLM."""
+  parts = [p.strip() for p in hourly_str.split(",")]
+  # Each hourly entry is 3 parts: "HH:MM-HH:MM", "XX °C", "Description"
+  descriptions = [parts[i] for i in range(2, len(parts), 3) if i < len(parts)]
+  if not descriptions:
+    return "conditions unknown"
+  most_common = Counter(descriptions).most_common(1)[0][0]
+  return most_common.lower()
 
 
-def _get_weather_agent():
-    global _weather_agent
-    if _weather_agent is None:
-        _weather_agent = create_llm_agent(
-            model_name=os.environ["MODEL_QWEN2.5"],
-            temperature=0.1,
-            top_p=0.5,
-            top_k=20,
-            max_tokens=120,
-            n_ctx=16384,
-            checkpointer=InMemorySaver(),
-        )
-    return _weather_agent
+def _parse_day(day_str: str) -> tuple[int, int, int, str]:
+  """Extract avg/low/high temps and hourly portion from a forecast string."""
+  avg = int(re.search(r'avg temp: (\d+)', day_str).group(1))
+  low = int(re.search(r'low: (\d+)', day_str).group(1))
+  high = int(re.search(r'high: (\d+)', day_str).group(1))
+  hourly_start = day_str.find('hourly: ')
+  hourly = day_str[hourly_start + 8:] if hourly_start != -1 else day_str
+  return avg, low, high, hourly
 
 
-def _comment_on_data(query: str, data: dict) -> str:
-  """Comment on the weather data.
+def _format_weather_data(data: dict, period: str = "FORECAST") -> str:
+  """Summarize each day's forecast and combine into a readable string."""
+  today = data.get("today", {})
+  location = today.get("location", "Unknown")
+  current_temp = today.get("current_temperature", "?")
+  forecast = today.get("forecast", [])
 
-  Args:
-      query: The user's original weather query
-      data: Formatted weather forecast data
+  day_labels = ["Today", "Tomorrow", "The day after tomorrow"]
+  period_index = {"CURRENT": [0], "TODAY": [0], "TOMORROW": [1], "DAY_AFTER": [2]}
+  indices = period_index.get(period, range(len(forecast)))
 
-  Returns:
-      Formatted string: Natural language response
-  """
-  # Format the data as a readable string for the LLM
-  data_str = json.dumps(data, indent=2, default=str)
+  lines = [f"Weather for {location}:", f"Current temperature: {current_temp}°C"]
+  for i in indices:
+    if i >= len(forecast):
+      continue
+    label = day_labels[i] if i < len(day_labels) else f"Day {i + 1}"
+    avg, low, high, hourly = _parse_day(forecast[i])
+    condition = _get_condition(hourly)
+    lines.append(f"{label}: average {avg}°C, lows {low}°C and highs {high}°C with {condition}")
 
-  # Separate the user query and weather data into distinct sections
-  user_message = f"""User Query: {query}
-
-Weather Data:
-{data_str}
-
-Answer the user's query in 1-2 sentences using only the data above. Do not add any information not present in the data."""
-
-  messages = [
-    SystemMessage(content=weather_comment_prompt),
-    HumanMessage(content=user_message),
-  ]
-
-  config = {"configurable": {"thread_id": str(uuid.uuid4())}}
-  response = _get_weather_agent().invoke({"messages": messages}, config=config)
-
-  result = response["messages"][-1].content.strip()
-
-  # Hard-cap to 2 sentences — cached LLM instances may ignore max_tokens
-  sentences = result.split(". ")
-  if len(sentences) > 2:
-    result = ". ".join(sentences[:2]).rstrip(".") + "."
-
-  return result
+  return "\n".join(lines)
 
 
 def _classify_intent(query: str) -> dict:
@@ -165,6 +149,4 @@ async def handle_weather(query: str) -> str:
     time_period = "CURRENT"
 
   weather_data = await query_weather(location, time_period)
-  comment = _comment_on_data(query, weather_data)
-
-  return comment
+  return _format_weather_data(weather_data, time_period)
