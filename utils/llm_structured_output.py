@@ -1,85 +1,106 @@
 """Utility for generating structured outputs using outlines and llama.cpp."""
 
+import gc
 import os
 from typing import TypeVar
 
 import outlines
 from json_repair import repair_json
 from langsmith import traceable
+from llama_cpp import Llama
 from loguru import logger
 from pydantic import BaseModel
-
-from utils.vram_manager import vram_manager
 
 T = TypeVar("T", bound=BaseModel)
 
 
+def _model_path(model_name: str, model_path: str | None = None) -> str:
+    base = model_path or os.environ.get("MODEL_PATH", "models/")
+    return os.path.join(base, model_name)
+
+
+def _suppress_stderr():
+    old_err = os.dup(2)
+    old_out = os.dup(1)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 2)
+    os.dup2(devnull, 1)
+    return old_err, old_out, devnull
+
+
+def _restore_stderr(old_err, old_out, devnull):
+    os.dup2(old_err, 2)
+    os.dup2(old_out, 1)
+    os.close(old_err)
+    os.close(old_out)
+    os.close(devnull)
+
+
 @traceable(name="structured_output_generation", run_type="llm")
 def generate_structured_output(
-  model_name: str,
-  user_prompt: str,
-  system_prompt: str,
-  pydantic_model: type[T],
-  model_path: str | None = None,
-  n_ctx: int | None = 2048,
-  max_tokens: int | None = 2500,
-  **llama_kwargs,
+    model_name: str,
+    user_prompt: str,
+    system_prompt: str,
+    pydantic_model: type[T],
+    model_path: str | None = None,
+    n_ctx: int | None = 2048,
+    max_tokens: int | None = 2500,
+    **llama_kwargs,
 ) -> T:
-  """Generate structured output using outlines with llama.cpp backend.
+    """Generate structured output using outlines with llama.cpp backend.
 
-  Args:
-      model_name: Name of the model (e.g., MODEL_PHI4 environment variable value)
-      user_prompt: The user's query to process
-      system_prompt: System instructions/prompt for the model
-      pydantic_model: Pydantic model class defining the expected output structure
-      model_path: Optional path to models directory. Defaults to MODEL_PATH env var
-      n_ctx: Context window size in tokens (default: 2048)
-      max_tokens: Maximum tokens to generate (default: 512)
-      **llama_kwargs: Additional keyword arguments to pass to Llama constructor
-          (e.g., n_gpu_layers, temperature, etc.)
+    Args:
+        model_name: GGUF model filename
+        user_prompt: The user's query
+        system_prompt: System instructions for the model
+        pydantic_model: Pydantic model class defining the output schema
+        model_path: Optional override for the models directory
+        n_ctx: Context window size in tokens
+        max_tokens: Maximum tokens to generate
+        **llama_kwargs: Extra args forwarded to the Llama constructor
 
-  Returns:
-      Instance of pydantic_model with the structured response
+    Returns:
+        Instance of pydantic_model with the structured response
+    """
+    try:
+        full_path = _model_path(model_name, model_path)
+        fds = _suppress_stderr()
+        try:
+            llm = Llama(
+                model_path=full_path,
+                n_ctx=n_ctx,
+                max_tokens=max_tokens,
+                verbose=False,
+                **llama_kwargs,
+            )
+        finally:
+            _restore_stderr(*fds)
 
-  Raises:
-      Exception: If model initialization or inference fails
+        model = outlines.from_llamacpp(llm)
+        prompt = f"Following these instructions: {system_prompt}. answer the users query: {user_prompt} "
 
-  """
-  try:
-    llm = vram_manager.get_or_load_llama(
-      model_name=model_name,
-      model_path=model_path,
-      n_ctx=n_ctx,
-      max_tokens=max_tokens,
-      verbose=False,
-      **llama_kwargs,
-    )
+        logger.debug(
+            f"Generating structured output: Model:{model_name}, "
+            f"Structure:{pydantic_model.__name__}, Context size: {n_ctx} Max tokens: {max_tokens}"
+        )
 
-    # Wrap with outlines for structured generation
-    model = outlines.from_llamacpp(llm)
+        result = model(model_input=prompt, output_type=pydantic_model, max_tokens=max_tokens)
+        logger.debug(f"Generated output: {result}")
 
-    prompt = (
-      f"""Following these instructions: {system_prompt}. answer the users query: {user_prompt} """
-    )
+        # Free the Llama instance immediately so GPU memory is available for the next model load
+        del model
+        del llm
+        gc.collect()
 
-    logger.debug(f"Generating structured output: Model:{model_name}, Structure:{pydantic_model.__name__}, Context size: {n_ctx} Max tokens: {max_tokens}")
+        if isinstance(result, str):
+            try:
+                repaired = repair_json(result)
+                return pydantic_model.model_validate_json(repaired)
+            except Exception as repair_error:
+                logger.warning(f"JSON repair failed: {repair_error}, trying original")
+                return pydantic_model.model_validate_json(result)
+        return result
 
-    # Generate structured output
-    result = model(model_input=prompt, output_type=pydantic_model, max_tokens=max_tokens)
-
-    logger.debug(f"Generated output: {result}")
-
-    # Parse the JSON string into the Pydantic model
-    if isinstance(result, str):
-      # Repair any malformed/truncated JSON before validation
-      try:
-        repaired_json = repair_json(result)
-        return pydantic_model.model_validate_json(repaired_json)
-      except Exception as repair_error:
-        logger.warning(f"JSON repair failed: {repair_error}, trying original")
-        return pydantic_model.model_validate_json(result)
-    return result
-
-  except Exception as error:
-    logger.error(f"Failed to generate structured output: {error}")
-    raise
+    except Exception as error:
+        logger.error(f"Failed to generate structured output: {error}")
+        raise

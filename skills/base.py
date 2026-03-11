@@ -1,5 +1,14 @@
 """Base Skill definition for langbox."""
 
+
+class SkillFallback(Exception):
+    """Raised by a skill to tell the router to fall back to CHAT.
+
+    Use this when a skill cannot handle the query (e.g. no location in a weather
+    follow-up) but the conversation history held by the CHAT handler can answer it.
+    """
+    pass
+
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 

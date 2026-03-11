@@ -10,6 +10,9 @@ def intent_prompt() -> str:
 
 You are an intent classification agent. Classify user queries into exactly one intent category.
 
+If a "## Recent conversation" section is present in the user message, use it to understand follow-up questions.
+A follow-up that asks for comparison, preference, or elaboration on something already answered (e.g. "which one is warmer?", "which is cheaper?", "tell me more") is ALWAYS CHAT — even if the previous topic was weather, finance, or another domain. Only classify as a domain intent if the current query requires fetching NEW data.
+
 ## Intent Categories
 
 ### 1. HOME_CONTROL
@@ -60,13 +63,13 @@ General conversation, greetings, feedback, follow-up comparisons, nonsensical in
 ## Classification Rules
 
 1. "lights", "lamp", "bulb" + on/off → always HOME_CONTROL
-2. "timer", "reminder", "alarm", "my calendar", "my schedule" → always REMINDER
+2. "timer", "reminder", "alarm", "remind me", "set a timer", "my calendar", "my schedule" → always REMINDER. The word "today" alone does NOT indicate REMINDER — it must appear with explicit scheduling words.
 3. "news", "headlines", "current events", "what's happening" → always NEWSFEED
 4. "weather", "forecast", "temperature", "rain", "snow", "humid" anywhere in the query → always WEATHER
 5. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
 6. "help me" / "can you help" → INFORMATION_QUERY unless it mentions timers/reminders
 7. Messages directed at the assistant (feedback, corrections, greetings) → CHAT
-8. Follow-up questions without any domain keyword ("which one", "which is better", "what about the other one") → CHAT
+8. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT.
 9. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
 10. When in doubt among general questions → INFORMATION_QUERY
 11. Choose the single MOST specific intent
@@ -100,6 +103,9 @@ User: "which city is better?" → CHAT
 User: "what about the other one?" → CHAT
 User: "I am ozymandias, destroyer of worlds" → CHAT
 User: "banana elephant purple" → CHAT
+User: "I don't like cold weather. where should I go today" → CHAT
+User: "where should I go today" → CHAT
+User: "what should I do today" → CHAT
 User: "destroyer of ?" → CHAT
 """
 

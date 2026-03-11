@@ -11,7 +11,7 @@ from agents.agent_factory import create_llm
 from skills.information.prompts import generalKnowledgePrompt, informationIntentPrompt
 from utils.llm_structured_output import generate_structured_output
 
-CONFIDENCE_THRESHOLD = 7
+CONFIDENCE_THRESHOLD = 9  # Only skip Wikipedia when model is very certain (9-10)
 
 
 class QueryType(str, Enum):
@@ -60,7 +60,7 @@ def _search_wiki(keyword: str) -> str:
     return wikipedia.summary(e.options[0], sentences=5)
   except wikipedia.PageError:
     logger.warning(f"No Wikipedia page found for '{keyword}'")
-    return f"No Wikipedia article found for '{keyword}'."
+    return None
 
 
 def _handle_general_knowledge(query: str, keyword: str) -> tuple[str, bool]:
@@ -77,7 +77,12 @@ def _handle_general_knowledge(query: str, keyword: str) -> tuple[str, bool]:
     return result.answer, False
 
   logger.debug(f"Low confidence ({result.confidence}), falling back to Wikipedia for '{keyword}'")
-  return _search_wiki(keyword), True
+  wiki = _search_wiki(keyword)
+  if wiki is not None:
+    return wiki, True
+
+  logger.debug(f"No Wikipedia page for '{keyword}', using low-confidence LLM answer with disclaimer")
+  return f"I'm not certain of this, but: {result.answer}", False
 
 
 async def handle_information_query(query: str) -> str:

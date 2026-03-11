@@ -73,12 +73,16 @@ class HueBridgeClient:
     logger.debug(f"Synced {len(lights_list)} lights and {len(groups_list)} groups")
     return config
 
-  async def get_configuration(self) -> HueConfiguration:
+  async def get_configuration(self, force: bool = False) -> HueConfiguration:
     try:
       if not self._instance:
         self._instance = await self._get_hue_instance()
       if not self._instance:
         raise Exception("Failed to connect to Hue bridge")
+
+      if force:
+        logger.debug("Forcing fresh Hue configuration sync")
+        return await self._sync_hue_configuration(self._instance)
 
       config_doc = await HueConfiguration.find_one()
       if config_doc:

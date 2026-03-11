@@ -50,35 +50,55 @@ def _classify_intent(query: str, lights: str, groups: str) -> dict:
     return {"type": "ALL", "id": None, "on": True}
 
 
+async def _execute_home_control(hue_client: HueBridgeClient, query: str, force_sync: bool = False) -> str:
+  """Fetch config, classify intent, and execute the light control command.
+
+  Args:
+      hue_client: Initialised HueBridgeClient
+      query: Original user query
+      force_sync: When True, bypass cache and sync config fresh from the bridge
+
+  Returns:
+      Confirmation string from the bridge
+  """
+  config = await hue_client.get_configuration(force=force_sync)
+  lights_list = hue_client.get_lights_formatted(config)
+  groups_list = hue_client.get_groups_formatted(config)
+
+  intent = _classify_intent(query, lights_list, groups_list)
+  target_type = intent.get("type")
+  target_id = intent.get("id")
+  turn_on = intent.get("on")
+
+  logger.debug(f"Detected secondary intent: {intent}")
+
+  if turn_on is None:
+    turn_on = not await hue_client.are_lights_on(target_type, target_id)
+    logger.debug(f"Toggle resolved to: {'on' if turn_on else 'off'}")
+
+  if target_type == "GROUP" and target_id is not None:
+    return await hue_client.control_group(target_id, turn_on)
+  elif target_type == "LIGHT" and target_id is not None:
+    return await hue_client.control_light(target_id, turn_on)
+  else:
+    results = [await hue_client.control_group(group.id, turn_on) for group in config.groups]
+    return "\n".join(results)
+
+
 async def handle_home_control(query: str) -> str:
-  """Handle home automation control requests."""
+  """Handle home automation control requests.
+
+  On resource errors (stale cached config), re-syncs from the bridge and retries once.
+  """
   try:
     hue_client = HueBridgeClient()
-    config = await hue_client.get_configuration()
-    lights_list = hue_client.get_lights_formatted(config)
-    groups_list = hue_client.get_groups_formatted(config)
-
-    intent = _classify_intent(query, lights_list, groups_list)
-    target_type = intent.get("type")
-    target_id = intent.get("id")
-    turn_on = intent.get("on")
-
-    logger.debug(f"Detected secondary intent: {intent}")
-
-    if turn_on is None:
-      turn_on = not await hue_client.are_lights_on(target_type, target_id)
-      logger.debug(f"Toggle resolved to: {'on' if turn_on else 'off'}")
-
-    if target_type == "GROUP" and target_id is not None:
-      return await hue_client.control_group(target_id, turn_on)
-    elif target_type == "LIGHT" and target_id is not None:
-      return await hue_client.control_light(target_id, turn_on)
-    else:
-      results = []
-      for group in config.groups:
-        result = await hue_client.control_group(group.id, turn_on)
-        results.append(result)
-      return "\n".join(results)
+    try:
+      return await _execute_home_control(hue_client, query, force_sync=False)
+    except Exception as error:
+      if "not available" in str(error).lower():
+        logger.warning(f"Resource error ({error}) — re-syncing config and retrying")
+        return await _execute_home_control(hue_client, query, force_sync=True)
+      raise
 
   except Exception as error:
     logger.error(f"Failed to control home device. Error: {error}")

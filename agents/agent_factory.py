@@ -1,12 +1,34 @@
-"""Agent factory for creating and managing LLM agents with configurable parameters."""
+"""Agent factory for creating LLM instances."""
 
+import multiprocessing
 import os
 from typing import Optional
 
 from langchain.agents import create_agent
+from langchain_community.chat_models import ChatLlamaCpp
 from loguru import logger
 
-from utils.vram_manager import vram_manager
+
+def _model_path(model_name: str) -> str:
+    base = os.environ.get("MODEL_PATH", "models/")
+    return os.path.join(base, model_name)
+
+
+def _suppress_stderr():
+    old_err = os.dup(2)
+    old_out = os.dup(1)
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 2)
+    os.dup2(devnull, 1)
+    return old_err, old_out, devnull
+
+
+def _restore_stderr(old_err, old_out, devnull):
+    os.dup2(old_err, 2)
+    os.dup2(old_out, 1)
+    os.close(old_err)
+    os.close(old_out)
+    os.close(devnull)
 
 
 def create_llm(
@@ -23,45 +45,29 @@ def create_llm(
     verbose: bool = False,
     n_threads: Optional[int] = None,
 ):
-    """Create an LLM instance with configurable parameters.
-
-    Args:
-        model_name: Model filename (defaults to MODEL_GENERALIST env var)
-        temperature: Sampling temperature (0.0 = deterministic, higher = more random)
-        n_ctx: Context window size in tokens
-        n_gpu_layers: Number of layers to offload to GPU
-        n_batch: Batch size for processing (must be between 1 and n_ctx)
-        max_tokens: Maximum tokens to generate
-        repeat_penalty: Penalty for token repetition
-        top_p: Nucleus sampling threshold
-        top_k: Top-k sampling parameter
-        echo: Whether to echo the prompt
-        verbose: Enable verbose logging
-        n_threads: Number of threads (defaults to CPU count - 1)
-
-    Returns:
-        Configured LangChain LLM instance
-
-    Example:
-        llm = create_llm(model_name=os.environ['MODEL_GENERALIST'], temperature=0.0)
-    """
     if model_name is None:
-        model_name = os.environ.get('MODEL_GENERALIST')
+        model_name = os.environ.get("MODEL_GENERALIST")
+    if n_threads is None:
+        n_threads = multiprocessing.cpu_count() - 1
 
-    return vram_manager.get_or_load_llamacpp(
-        model_name=model_name,
-        temperature=temperature,
-        n_ctx=n_ctx,
-        n_gpu_layers=n_gpu_layers,
-        n_batch=n_batch,
-        max_tokens=max_tokens,
-        repeat_penalty=repeat_penalty,
-        top_p=top_p,
-        top_k=top_k,
-        echo=echo,
-        verbose=verbose,
-        n_threads=n_threads,
-    )
+    fds = _suppress_stderr()
+    try:
+        return ChatLlamaCpp(
+            model_path=_model_path(model_name),
+            temperature=temperature,
+            n_ctx=n_ctx,
+            n_gpu_layers=n_gpu_layers,
+            n_batch=n_batch,
+            max_tokens=max_tokens,
+            repeat_penalty=repeat_penalty,
+            top_p=top_p,
+            top_k=top_k,
+            echo=echo,
+            n_threads=n_threads,
+            verbose=verbose,
+        )
+    finally:
+        _restore_stderr(*fds)
 
 
 def create_llm_agent(
@@ -80,27 +86,6 @@ def create_llm_agent(
     checkpointer=None,
     **agent_kwargs,
 ):
-    """Create an LLM agent with configurable parameters.
-
-    Args:
-        model_name: Model filename (defaults to MODEL_GENERALIST env var)
-        temperature: Sampling temperature (0.0 = deterministic, higher = more random)
-        n_ctx: Context window size in tokens
-        n_gpu_layers: Number of layers to offload to GPU
-        n_batch: Batch size for processing (must be between 1 and n_ctx)
-        max_tokens: Maximum tokens to generate
-        repeat_penalty: Penalty for token repetition
-        top_p: Nucleus sampling threshold
-        top_k: Top-k sampling parameter
-        echo: Whether to echo the prompt
-        verbose: Enable verbose logging
-        n_threads: Number of threads (defaults to CPU count - 1)
-        checkpointer: Optional checkpointer for the agent (e.g., InMemorySaver())
-        **agent_kwargs: Additional keyword arguments to pass to create_agent
-
-    Returns:
-        Configured LangChain agent instance
-    """
     llm = create_llm(
         model_name=model_name,
         temperature=temperature,
@@ -116,12 +101,11 @@ def create_llm_agent(
         n_threads=n_threads,
     )
 
-    # Build agent kwargs
-    create_agent_kwargs = {"model": llm}
+    kwargs = {"model": llm}
     if checkpointer is not None:
-        create_agent_kwargs["checkpointer"] = checkpointer
-    create_agent_kwargs.update(agent_kwargs)
+        kwargs["checkpointer"] = checkpointer
+    kwargs.update(agent_kwargs)
 
-    agent = create_agent(**create_agent_kwargs)
-    logger.debug(f"Agent created successfully with model: {model_name or 'default'}")
+    agent = create_agent(**kwargs)
+    logger.debug(f"Agent created with model: {model_name or 'default'}")
     return agent
