@@ -2,95 +2,41 @@ import asyncio
 
 from loguru import logger
 
-from handlers.chat.handler_chat import handle_general_chat
-from handlers.conversation.handler_conversation import handle_conversation
-from handlers.finance.handler_finance import handle_finance_stocks
-from handlers.home_control.handler_home_control import handle_home_control
-from handlers.information.handler_information import handle_information_query
-from handlers.newsfeed.handler_newsfeed import handle_newsfeed
-from handlers.reminder.handler_reminder import handle_reminder
-from handlers.transportation.handler_transportation import handle_transportation
-from handlers.weather.handler_weather import handle_weather
+from skills.conversation.skill import handle_conversation
+from skills.registry import SKILL_MAP
 
 
 async def route_intent(intent: str, query: str) -> str:
-  """
-  Route classified intents to their appropriate handlers.
+  """Route a classified intent to the matching skill.
 
   Args:
-      intent: The classified intent category (e.g., "HOME_CONTROL", "WEATHER", etc.)
+      intent: The classified intent category (e.g., "WEATHER")
       query: The original user query
 
   Returns:
-      The handler's response string
+      The final natural language response
   """
-  # Define valid intent categories
-  valid_intents = [
-    "HOME_CONTROL",
-    "WEATHER",
-    "FINANCE_STOCKS",
-    "TRANSPORTATION",
-    "CALENDAR_SCHEDULE",
-    "REMINDER",
-    "INFORMATION_QUERY",
-    "NEWSFEED",
-    "CHAT",
-  ]
-
-  # Extract the intent from the response
-  # The LLM sometimes returns verbose responses instead of just the intent name
   intent_upper = intent.strip().upper()
 
-  # Try to find a valid intent in the response
-  detected_intent = None
-  for valid_intent in valid_intents:
-    if valid_intent in intent_upper:
-      detected_intent = valid_intent
-      break
+  detected_intent = next(
+    (sid for sid in SKILL_MAP if sid in intent_upper),
+    None,
+  )
 
-  # If we couldn't find a valid intent, log the full response for debugging
   if not detected_intent:
     logger.warning(f"Could not extract valid intent from response: {intent[:200]}...")
-    logger.debug("Falling back to general chat handler")
-    if asyncio.iscoroutinefunction(handle_general_chat):
-      handler_response = await handle_general_chat(query=query)
-    else:
-      handler_response = handle_general_chat(query=query)
-    return await handle_conversation(query, handler_response)
-
-  # Guard against misclassified HOME_CONTROL: require at least one home-related keyword
-  _HOME_KEYWORDS = {"light", "lights", "lamp", "bulb", "dim", "switch", "turn on", "turn off", "switch on", "switch off", "brightness", "hue", "scene"}
-  if detected_intent == "HOME_CONTROL" and not any(kw in query.lower() for kw in _HOME_KEYWORDS):
-    logger.warning(f"HOME_CONTROL classified but no home keywords found in '{query}' — falling back to CHAT")
     detected_intent = "CHAT"
 
-  # Log the detected intent
-  logger.debug(f"Detected primary intent: {detected_intent}, from {query}")
+  logger.debug(f"Detected primary intent: {detected_intent}")
 
-  # Route to the appropriate handler
-  route_map = {
-    "HOME_CONTROL": handle_home_control,
-    "WEATHER": handle_weather,
-    "FINANCE_STOCKS": handle_finance_stocks,
-    "TRANSPORTATION": handle_transportation,
-    "REMINDER": handle_reminder,
-    "INFORMATION_QUERY": handle_information_query,
-    "NEWSFEED": handle_newsfeed,
-    "CHAT": handle_general_chat,
-  }
-
-  handler = route_map.get(detected_intent)
-  if handler:
-    # Check if handler is async and await it
-    if asyncio.iscoroutinefunction(handler):
-      handler_response = await handler(query=query)
-    else:
-      handler_response = handler(query=query)
+  skill = SKILL_MAP[detected_intent]
+  if asyncio.iscoroutinefunction(skill.handle):
+    response = await skill.handle(query=query)
   else:
-    logger.warning(f"No handler found for intent: {detected_intent}")
-    if asyncio.iscoroutinefunction(handle_general_chat):
-      handler_response = await handle_general_chat(query=query)
-    else:
-      handler_response = handle_general_chat(query=query)
+    response = skill.handle(query=query)
 
-  return await handle_conversation(query, handler_response)
+  # Skills that already produce final natural language skip the wrapping step
+  if not skill.needs_wrapping:
+    return response
+
+  return await handle_conversation(query, response)

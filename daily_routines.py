@@ -19,8 +19,8 @@ from datetime import datetime
 
 from loguru import logger
 
-from handlers.reminder.handler_list import handle_list_reminders
-from handlers.weather.handler_weather import query_weather
+from skills.reminder.list import handle_list_reminders
+from skills.weather.skill import _query_weather as query_weather
 
 
 async def run_daily_routines() -> str:
