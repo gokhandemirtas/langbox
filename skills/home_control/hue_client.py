@@ -130,6 +130,8 @@ class HueBridgeClient:
 
     light = await asyncio.to_thread(self._instance.get_light, id_=light_id)
     await asyncio.to_thread(light.on if turn_on else light.off)
+    if turn_on:
+      await asyncio.to_thread(light.set_brightness, 254)
     return f"{light.name} turned {'on' if turn_on else 'off'}"
 
   async def control_group(self, group_id: int, turn_on: bool) -> str:
@@ -140,4 +142,6 @@ class HueBridgeClient:
 
     group = await asyncio.to_thread(self._instance.get_group, id_=group_id)
     await asyncio.to_thread(group.on if turn_on else group.off)
+    if turn_on:
+      await asyncio.to_thread(group.set_brightness, 254)
     return f"{group.name} lights turned {'on' if turn_on else 'off'}"

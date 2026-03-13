@@ -50,6 +50,14 @@ def _classify_intent(query: str, lights: str, groups: str) -> dict:
     return {"type": "ALL", "id": None, "on": True}
 
 
+_LIST_KEYWORDS = {"list", "show", "what", "which", "available", "display"}
+
+
+def _is_list_query(query: str) -> bool:
+  words = set(query.lower().split())
+  return bool(words & _LIST_KEYWORDS)
+
+
 async def _execute_home_control(hue_client: HueBridgeClient, query: str, force_sync: bool = False) -> str:
   """Fetch config, classify intent, and execute the light control command.
 
@@ -64,6 +72,9 @@ async def _execute_home_control(hue_client: HueBridgeClient, query: str, force_s
   config = await hue_client.get_configuration(force=force_sync)
   lights_list = hue_client.get_lights_formatted(config)
   groups_list = hue_client.get_groups_formatted(config)
+
+  if _is_list_query(query):
+    return f"Groups: {groups_list}\nLights: {lights_list}"
 
   intent = _classify_intent(query, lights_list, groups_list)
   target_type = intent.get("type")

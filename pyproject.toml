@@ -39,6 +39,8 @@ dependencies = [
     "wikipedia>=1.4.0",
     "yfinance>=0.2.66",
     "pedalboard>=0.9.22",
+    "langchain-ollama>=1.0.1",
+    "ddgs>=9.11.3",
 ]
 
 [tool.ruff]

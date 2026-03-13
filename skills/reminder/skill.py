@@ -30,7 +30,6 @@ def _classify_intent(query: str) -> dict:
       repeat_penalty=1.15,
       top_p=0.95,
       top_k=40,
-      n_gpu_layers=-1,
     )
     return result.model_dump()
   except Exception as e:
