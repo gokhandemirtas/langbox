@@ -41,6 +41,9 @@ dependencies = [
     "pedalboard>=0.9.22",
     "langchain-ollama>=1.0.1",
     "ddgs>=9.11.3",
+    "opencv-python>=4.10.0",
+    "deepface>=0.0.99",
+    "tf-keras>=2.20.1",
 ]
 
 [tool.ruff]

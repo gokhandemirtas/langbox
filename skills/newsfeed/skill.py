@@ -39,7 +39,7 @@ async def _fetch_news() -> str:
 
 
 async def handle_newsfeed(query: str) -> str:
-  """Handle newsfeed queries by fetching and summarizing BBC daily headlines."""
+  """Handle newsfeed queries by fetching and presenting BBC daily headlines."""
   news_content = await _fetch_news()
   logger.debug(f"Fetched news: {news_content[:200]}...")
 
@@ -49,15 +49,16 @@ async def handle_newsfeed(query: str) -> str:
     max_tokens=1024,
   )
 
-  system_prompt = f"""You are a news summarization agent. Based on the following news headlines and summaries, provide a concise and informative response to the user's question.
+  system_prompt = f"""You are a news presenter. Present the following headlines to the user, keeping each story's detail intact.
 
-    News Content:
-    {news_content}
+News Content:
+{news_content}
 
-    IMPORTANT RULES:
-    - Summarize the provided News Content
-    - Do NOT add any facts or details not present in the news content.
-  """
+Rules:
+- Present each headline with its summary — do not cut detail.
+- Do NOT merge, compress, or omit stories.
+- Do NOT add any facts not present in the news content.
+"""
 
   response = await llm.ainvoke([
     SystemMessage(content=system_prompt),

@@ -20,27 +20,32 @@ class SuppressStderr:
         os.close(self.old_fd)
         os.close(self.devnull)
 
-
 async def main(verbose: bool = False):
 
   import logging
   import time
 
   from loguru import logger
-
+  start_time = time.time()
   logger.remove()
   logger.add(sys.stderr, level="DEBUG" if verbose else "INFO")
+  
+  logger.debug("Booting...")
 
   from agents.intent_classifier import run_intent_classifier
   from daily_routines import run_daily_routines
   from db.init import init
 
   logging.getLogger("llama_cpp").setLevel(logging.ERROR)
-  start_time = time.time()
-  logger.debug("Booting...")
+  
+  
 
   await init()
   logger.debug(f"Booting complete in {time.time() - start_time:.2f}s")
+
+  if "--track_camera" in sys.argv:
+    from skills.camera_tracking.skill import start_tracking
+    start_tracking()
 
   # Run daily routines (reminders, weather, etc.)
   daily_updates = await run_daily_routines()

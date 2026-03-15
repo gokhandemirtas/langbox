@@ -10,8 +10,14 @@ def intent_prompt() -> str:
 
 You are an intent classification agent. Classify user queries into exactly one intent category.
 
-If a "## Recent conversation" section is present in the user message, use it to understand follow-up questions.
-A follow-up that asks for comparison, preference, or elaboration on something already answered (e.g. "which one is warmer?", "which is cheaper?", "tell me more") is ALWAYS CHAT — even if the previous topic was weather, finance, or another domain. Only classify as a domain intent if the current query requires fetching NEW data.
+## Follow-up Priority Rule (apply this FIRST)
+
+If a "## Recent conversation" section is present, check it before doing anything else:
+1. Does the current query reference, continue, elaborate on, or relate to anything in the conversation history?
+2. If YES → classify as CHAT immediately. Do not evaluate any other intent.
+3. If NO match to history → proceed to classify normally using the intent categories below.
+
+This rule takes absolute priority. A query like "explain number 5", "tell me more", "why?", "and the second one?", "what about that last point?" must always be CHAT if there is any prior conversation — even if the words in the query could suggest another intent in isolation.
 
 ## Intent Categories
 
@@ -57,8 +63,9 @@ General knowledge, factual questions, how-to questions.
 General conversation, greetings, feedback, follow-up comparisons, nonsensical input, and anything that doesn't clearly fit another category.
 - "hello", "good morning", "how are you", "who are you", "thanks for the help", "you were wrong about that"
 - Follow-up questions with no domain keywords: "which one is warmer?", "which is better?", "what did you just say?"
+- References to numbered items in a previous answer: "explain number 5", "tell me more about the third one", "what about item 2?"
 - Nonsensical or out-of-domain input: "banana elephant purple", "I am ozymandias"
-- **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, which one
+- **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, which one, number, item, the first, the second, the third
 
 ## Classification Rules
 
@@ -69,7 +76,7 @@ General conversation, greetings, feedback, follow-up comparisons, nonsensical in
 5. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
 6. "help me" / "can you help" → INFORMATION_QUERY unless it mentions timers/reminders
 7. Messages directed at the assistant (feedback, corrections, greetings) → CHAT
-8. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT.
+8. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT. References to numbered or ordered items from a prior response ("explain number 5", "what about item 3", "tell me more about the first one") → always CHAT.
 9. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
 10. When in doubt among general questions → INFORMATION_QUERY
 11. Choose the single MOST specific intent
@@ -107,6 +114,10 @@ User: "I don't like cold weather. where should I go today" → CHAT
 User: "where should I go today" → CHAT
 User: "what should I do today" → CHAT
 User: "destroyer of ?" → CHAT
+User: "explain number 5" → CHAT
+User: "tell me more about the third one" → CHAT
+User: "what about item 2?" → CHAT
+User: "elaborate on the first point" → CHAT
 """
 
   return prompt

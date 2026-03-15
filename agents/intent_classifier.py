@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 
 from loguru import logger
@@ -20,7 +21,7 @@ def _build_classifier_prompt(user_query: str) -> str:
   lines = ["## Recent conversation"]
   for human, assistant in history:
     lines.append(f"User: {human}")
-    lines.append(f"Assistant: {assistant[:120]}")  # truncate long responses
+    lines.append(f"Assistant: {assistant[:600]}")  # truncate long responses
   lines.append(f"\nCurrent query: {user_query}")
   return "\n".join(lines)
 
@@ -35,6 +36,7 @@ async def run_intent_classifier():
 
   # Use structured output to guarantee a valid intent classification
   logger.debug("Invoking primary intent classifier")
+
   result = generate_structured_output(
     model_name=os.environ["MODEL_INTENT_CLASSIFIER"],
     user_prompt=classifier_input,
@@ -44,7 +46,6 @@ async def run_intent_classifier():
     max_tokens=50,
     n_gpu_layers=-1,
   )
-
   final_answer = result.intent
   logger.debug(f"Classified intent: {final_answer}")
 
@@ -52,7 +53,8 @@ async def run_intent_classifier():
 
   # Process through conversational agent and save to DB
   logger.info(handler_response)
-  # speak(handler_response)
+  if "--speak" in sys.argv:
+    speak(handler_response)
 
   elapsed_time = time.time() - start_time
   logger.info(
