@@ -3,7 +3,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 from db.schemas import Weather

@@ -1,0 +1,33 @@
+   Building llama-cpp-python==0.3.19
+Downloading pygments (1.2MiB)
+Downloading primp (4.3MiB)
+Downloading ruff (10.7MiB)
+Downloading grpcio (6.5MiB)
+Downloading numpy (16.1MiB)
+Downloading cryptography (4.3MiB)
+Downloading aiohttp (1.7MiB)
+Downloading transformers (9.6MiB)
+ Downloading pygments
+ Downloading aiohttp
+ Downloading primp
+ Downloading cryptography
+ Downloading grpcio
+ Downloading transformers
+ Downloading ruff
+ Downloading numpy
+      Built llama-cpp-python==0.3.19
+Uninstalled 24 packages in 445ms
+Installed 24 packages in 68ms
+2026-03-30 10:07:13.557 | DEBUG    | __main__:main:34 - Booting...
+2026-03-30 10:07:57.850 | DEBUG    | db.init:init:15 - Initiating Mongo DB with collections: ['Credentials', 'HueConfiguration', 'Journal', 'Newsfeed', 'Plans', 'Reminders', 'UserPersona', 'Weather']
+2026-03-30 10:07:57.923 | DEBUG    | db.init:init:22 - Mongo DB initiated successfully
+2026-03-30 10:07:58.023 | DEBUG    | skills.personalizer.skill:start_personalizer:274 - [personalizer] Loaded existing persona from DB.
+2026-03-30 10:07:58.023 | DEBUG    | __main__:main:62 - Booting complete in 44.47s
+
+ 
+How may I assist? 
+ 
+2026-03-30 10:07:58.023 | DEBUG    | agents.intent_classifier:run_intent_classifier:163 - Invoking primary intent classifier
+2026-03-30 10:07:58.023 | DEBUG    | agents.intent_classifier:run_intent_classifier:164 - Classifier input:
+hello
+2026-03-30 10:09:40.731 | DEBUG    | utils.llm_structured_output:_get_or_load_llama:74 - [llm] Loaded model in 102.7s (ctx=131072)

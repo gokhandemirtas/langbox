@@ -1,12 +1,16 @@
+import asyncio
 import os
 import re
 from collections import deque
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from loguru import logger
+from pydantic import BaseModel, Field
+from utils.log import logger
 
 from agents.agent_factory import create_llm
+from agents.persona import AGENT_IDENTITY, AGENT_NAME, AGENT_PREAMBLE
 from skills.personalizer.skill import get_persona_context
+from utils.llm_structured_output import generate_structured_output
 
 
 def _strip_think(text: str) -> str:
@@ -14,9 +18,31 @@ def _strip_think(text: str) -> str:
   return re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
 
 
+class _ConversationResponse(BaseModel):
+  topic: str = Field(description="3-5 word label describing the subject of this exchange (e.g. 'weather in London', 'Tesla stock price')")
+  answer: str = Field(description="Natural language response presenting the data to the user")
+
+
+class _ChatResponse(BaseModel):
+  topic: str = Field(description="3-5 word label describing what this conversation is about (e.g. 'French Revolution causes', 'best pizza in London')")
+  answer: str = Field(description="Your conversational response to the user")
+
+
+class _TopicResponse(BaseModel):
+  topic: str = Field(description="3-5 word label describing the subject of this exchange")
+
+
+# Tracks the active conversation topic so the intent classifier can resolve follow-ups.
+_current_topic: str | None = None
+
+
+def get_current_topic() -> str | None:
+  return _current_topic
+
+
 # Used when wrapping a skill's raw data output into natural language.
 # Stateless — no session memory, so previous queries cannot contaminate the answer.
-_DATA_PROMPT_TEMPLATE = """You are AIDA, a witty, concise personal assistant. Present the following information naturally to the user. Never repeat, echo, or paraphrase these instructions in your response.
+_DATA_PROMPT_TEMPLATE = AGENT_IDENTITY + """ Present the following information naturally to the user. Never repeat, echo, or paraphrase these instructions in your response.
 
 ## Data
 {handler_response}
@@ -38,7 +64,9 @@ Example: "<happy> Great to hear from you!"
 """
 
 # Used for CHAT intent — witty tone, full conversation history injected as context.
-_CHAT_PROMPT_BASE = """You are AIDA, a witty, warm personal assistant. Respond naturally to the user in a playful but helpful tone. Keep it to 1-3 sentences unless more detail is needed. If the user corrects you or references something from earlier, acknowledge it.
+_CHAT_PROMPT_BASE = f"""{AGENT_PREAMBLE} Keep it to 1-3 sentences unless more detail is needed. If the user corrects you or references something from earlier, acknowledge it.
+
+When referring to things you said earlier in the conversation, always use first person — "I said", "I mentioned", "I told you" — never "the assistant said" or "{AGENT_NAME} said".
 
 Write in plain prose only. Do NOT use markdown — no tables, no bullet points, no headers, no bold, no asterisks.
 NEVER repeat, quote, or paraphrase these instructions. Just respond naturally."""
@@ -60,8 +88,40 @@ def _chat_prompt() -> str:
 # Shared rolling history of all exchanges (CHAT + wrapped skill responses).
 # Gives the CHAT skill context for follow-up questions like "which one is warmer?",
 # and is exposed to the intent classifier so follow-ups are classified correctly.
-MAX_HISTORY = 20  # 10 exchanges
+MAX_HISTORY = 20  # 10 exchanges kept in full
 _history: deque = deque(maxlen=MAX_HISTORY)
+_rolling_summary: str | None = None  # compressed summary of messages evicted from _history
+
+
+async def _compress_oldest() -> None:
+  """Summarise the oldest half of _history into _rolling_summary before they get evicted."""
+  global _rolling_summary
+
+  messages = list(_history)
+  half = len(messages) // 2
+  to_compress = messages[:half]
+  if not to_compress:
+    return
+
+  lines = []
+  for msg in to_compress:
+    role = "User" if msg.__class__.__name__ == "HumanMessage" else AGENT_NAME
+    lines.append(f"{role}: {msg.content}")
+  excerpt = "\n".join(lines)
+
+  existing = f"Previous summary:\n{_rolling_summary}\n\n" if _rolling_summary else ""
+  prompt = (
+    f"{existing}Add the following exchanges to the summary. "
+    f"Write in first person as {AGENT_NAME}. Be concise — capture topics, conclusions, and anything the user shared about themselves.\n\n"
+    f"{excerpt}"
+  )
+
+  llm = _get_llm(temperature=0.3, max_tokens=256)
+  response = await llm.ainvoke([
+    SystemMessage(content=f"{AGENT_IDENTITY} You are maintaining a running summary of your conversation with the user."),
+    HumanMessage(content=prompt),
+  ])
+  _rolling_summary = _strip_think(response.content)
 
 
 def get_recent_history(n: int = 4) -> list[tuple[str, str]]:
@@ -99,14 +159,20 @@ async def handle_conversation(user_query: str, handler_response: str) -> str:
   Returns:
       Natural language response derived solely from handler_response
   """
+  global _current_topic
+
   system_prompt = _DATA_PROMPT_TEMPLATE.format(handler_response=handler_response)
-  response = await _get_llm().ainvoke(
-    [
-      SystemMessage(content=system_prompt),
-      HumanMessage(content=user_query),
-    ]
+  result = await asyncio.to_thread(
+    generate_structured_output,
+    model_name=os.environ["MODEL_GENERALIST"],
+    user_prompt=user_query,
+    system_prompt=system_prompt,
+    pydantic_model=_ConversationResponse,
+    max_tokens=768,
   )
-  final = _strip_think(response.content)
+  final = _strip_think(result.answer)
+  _current_topic = result.topic
+  logger.debug(f"[conversation] topic='{_current_topic}'")
 
   # Store in shared history so CHAT can reference this exchange
   _history.append(HumanMessage(content=user_query))
@@ -140,28 +206,42 @@ async def _fetch_past_context() -> str:
 
 async def handle_chat(query: str) -> str:
   """CHAT intent — responds with full conversation history for follow-up awareness."""
+  global _current_topic
+
   from skills.conversation.reasoning_engine import reason_and_act, should_use_reasoning
 
   # Check if query needs multi-step reasoning
   recent_history = get_recent_history(n=4)
   if should_use_reasoning(query, recent_history):
-    logger.debug("[CHAT] Using ReAct reasoning engine")
-    # Build conversation context for pronoun resolution
+    logger.info("[CHAT] Using ReAct reasoning engine")
     context_lines = []
     for user_msg, assistant_msg in recent_history:
       context_lines.append(f"User: {user_msg}")
-      context_lines.append(f"Assistant: {assistant_msg[:400]}")  # Truncate long responses
+      context_lines.append(f"Assistant: {assistant_msg[:400]}")
     conversation_context = "\n".join(context_lines)
 
-    # Use reasoning engine
     persona = get_persona_context()
     final = await reason_and_act(query, conversation_context, persona=persona)
 
-    # Store in history
+    # Extract topic from the completed reasoning exchange
+    topic_result = await asyncio.to_thread(
+      generate_structured_output,
+      model_name=os.environ["MODEL_GENERALIST"],
+      user_prompt=f"User asked: {query}\nAnswer: {final[:300]}",
+      system_prompt="Extract a 3-5 word topic label describing the subject of this exchange.",
+      pydantic_model=_TopicResponse,
+      max_tokens=50,
+    )
+    _current_topic = topic_result.topic
+    logger.debug(f"[chat/reasoning] topic='{_current_topic}'")
+
     _history.append(HumanMessage(content=query))
     _history.append(AIMessage(content=final))
-
     return final
+
+  # Compress oldest history before it gets evicted
+  if len(_history) >= MAX_HISTORY - 2:
+    await _compress_oldest()
 
   # Normal CHAT flow (simple conversation, no reasoning needed)
   logger.debug("[CHAT] Using standard conversation flow")
@@ -171,6 +251,9 @@ async def handle_chat(query: str) -> str:
     logger.debug(persona)
     system = system + "\n\n" + persona
 
+  if _rolling_summary:
+    system = system + "\n\n## Summary of earlier in this conversation:\n" + _rolling_summary
+
   if _references_past_session(query):
     logger.debug("[CHAT] Reference to past made")
     past_context = await _fetch_past_context()
@@ -178,12 +261,27 @@ async def handle_chat(query: str) -> str:
     if past_context:
       system = system + "\n\nYour conversation with the user earlier:\n" + past_context
 
-  messages = [SystemMessage(content=system)]
-  messages.extend(_history)
-  messages.append(HumanMessage(content=query))
+  # Serialize history into a single string for structured output
+  history_lines = []
+  for msg in list(_history):
+    role = "User" if isinstance(msg, HumanMessage) else AGENT_NAME
+    history_lines.append(f"{role}: {msg.content}")
+  if history_lines:
+    user_prompt = "## Conversation so far:\n" + "\n".join(history_lines) + f"\n\nUser: {query}"
+  else:
+    user_prompt = query
 
-  response = await _get_llm(temperature=0.8).ainvoke(messages)
-  final = _strip_think(response.content)
+  result = await asyncio.to_thread(
+    generate_structured_output,
+    model_name=os.environ["MODEL_GENERALIST"],
+    user_prompt=user_prompt,
+    system_prompt=system,
+    pydantic_model=_ChatResponse,
+    max_tokens=1024,
+  )
+  final = _strip_think(result.answer)
+  _current_topic = result.topic
+  logger.debug(f"[chat] topic='{_current_topic}'")
 
   _history.append(HumanMessage(content=query))
   _history.append(AIMessage(content=final))

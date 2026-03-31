@@ -1,7 +1,7 @@
 """Central HTTP client utility for making async requests across all handlers."""
 
 from typing import Optional, Dict, Any
-from loguru import logger
+from utils.log import logger
 import aiohttp
 
 

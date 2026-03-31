@@ -13,10 +13,11 @@ import os
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
 from pydantic import BaseModel, Field
 
+from agents.persona import AGENT_IDENTITY, AGENT_NAME
 from utils.llm_structured_output import generate_structured_output
+from utils.log import logger
 
 MAX_STEPS = 5  # Prevent infinite loops
 
@@ -63,8 +64,10 @@ _REASONING_SYSTEM_PROMPT = """You are a reasoning assistant that breaks down com
 
 ## Rules
 - ALWAYS resolve pronouns ("he" = who?, "it" = what?) using conversation history
-- If you need information, use INFORMATION_QUERY or SEARCH - do NOT guess
-- Only use RESPOND when you have all the information needed
+- If the answer is already present in the conversation history or your observations, use RESPOND immediately — do NOT look it up again
+- If the query is asking you to clarify or expand on something YOU already said, RESPOND directly from what you said
+- After 2 or more observations, strongly prefer RESPOND — only continue if you are clearly missing one specific fact
+- If you need information you genuinely do not have, use INFORMATION_QUERY or SEARCH — do NOT guess
 - Be concise in your thoughts
 
 ## Examples
@@ -106,25 +109,21 @@ Query: "2 + 2 = 4"
 
 
 async def reason_and_act(user_query: str, conversation_context: str, persona: str | None = None) -> str:
-  """Execute ReAct loop to answer a complex query.
+  """Execute ReAct loop to answer a complex query."""
+  from rich.console import Console
+  from rich.live import Live
+  from rich.spinner import Spinner
+  from rich.text import Text
 
-  Args:
-      user_query: The user's question
-      conversation_context: Recent conversation history for pronoun resolution
-
-  Returns:
-      Final answer to the user
-  """
   from agents.router import route_intent
 
+  console = Console(stderr=True, force_terminal=True)
   observations = []
   full_context = (
     f"{conversation_context}\n\nUser: {user_query}" if conversation_context else user_query
   )
 
   for step_num in range(1, MAX_STEPS + 1):
-    logger.debug(f"[ReAct] Step {step_num}/{MAX_STEPS}")
-
     # Build prompt with history
     if observations:
       obs_text = "\n\n".join([f"Observation {i + 1}: {obs}" for i, obs in enumerate(observations)])
@@ -133,36 +132,38 @@ async def reason_and_act(user_query: str, conversation_context: str, persona: st
       prompt = full_context
 
     # Get next reasoning step
-    try:
-      system_prompt = _REASONING_SYSTEM_PROMPT + f"\n\n{persona}" if persona else _REASONING_SYSTEM_PROMPT
-      step = await generate_structured_output_async(
-        model_name=os.environ["MODEL_GENERALIST"],
-        user_prompt=prompt,
-        system_prompt=system_prompt,
-        pydantic_model=ReasoningStep,
-        max_tokens=256,
-      )
-    except Exception as e:
-      logger.error(f"[ReAct] Structured output failed: {e}")
-      return "I encountered an error while reasoning through your question."
+    with Live(Spinner("dots", text=Text(f"Thinking… (step {step_num}/{MAX_STEPS})", style="dim")), console=console, transient=False):
+      try:
+        system_prompt = _REASONING_SYSTEM_PROMPT + f"\n\n{persona}" if persona else _REASONING_SYSTEM_PROMPT
+        step = await generate_structured_output_async(
+          model_name=os.environ["MODEL_GENERALIST"],
+          user_prompt=prompt,
+          system_prompt=system_prompt,
+          pydantic_model=ReasoningStep,
+          max_tokens=256,
+        )
+      except Exception as e:
+        logger.error(f"[ReAct] Structured output failed: {e}")
+        return "I encountered an error while reasoning through your question."
 
     logger.debug(f"[ReAct] Thought: {step.thought}")
     logger.debug(f"[ReAct] Action: {step.action} -> {step.query}")
 
     # If RESPOND, synthesise a conversational reply from all gathered observations
     if step.action == "RESPOND":
-      if observations:
-        return await _synthesize(user_query, observations, persona)
-      return step.query
+      context = observations if observations else [step.thought]
+      with Live(Spinner("dots", text=Text("Composing response…", style="dim")), console=console, transient=False):
+        return await _synthesize(user_query, context, persona)
 
     # Execute action
-    try:
-      result = await route_intent(intent=step.action, query=step.query)
-      observations.append(result)
-      logger.debug(f"[ReAct] Observation: {result[:100]}...")
-    except Exception as e:
-      observations.append(f"Error: {str(e)}")
-      logger.error(f"[ReAct] Tool execution failed: {e}")
+    with Live(Spinner("dots", text=Text(f"Using {step.action.lower().replace('_', ' ')}…", style="dim")), console=console, transient=False):
+      try:
+        result = await route_intent(intent=step.action, query=step.query)
+        observations.append(result)
+        logger.debug(f"[ReAct] Observation: {result[:100]}...")
+      except Exception as e:
+        observations.append(f"Error: {str(e)}")
+        logger.error(f"[ReAct] Tool execution failed: {e}")
 
   # Max steps reached — synthesise from what we have
   logger.warning(f"[ReAct] Max steps ({MAX_STEPS}) reached, synthesising from gathered observations")
@@ -171,13 +172,15 @@ async def reason_and_act(user_query: str, conversation_context: str, persona: st
   return "I couldn't complete the reasoning process within the allowed steps."
 
 
-_SYNTHESIZE_PROMPT = """You are AIDA, a witty, warm personal assistant. You have just researched a topic on behalf of the user.
+_SYNTHESIZE_PROMPT = f"""{AGENT_IDENTITY} You have just researched a topic on behalf of the user.
 
 Using the research findings below, write a direct, conversational response that:
 - Acknowledges the user's point or opinion if they expressed one
 - Presents what the research actually shows, even if it contradicts the user's view — be honest but tactful
 - Keeps it concise (2-4 sentences). No bullet points, no headers, plain prose only
-- Never dump raw search results — synthesise and interpret them"""
+- Never dump raw search results — synthesise and interpret them
+- Check if the user intends to continue the conversation based on what was discussed earlier
+- Always use first person when referring to yourself — "I said", "I mentioned" — never "the assistant" or "{AGENT_NAME} said\""""
 
 
 async def _synthesize(user_query: str, observations: list[str], persona: str | None = None) -> str:
@@ -206,39 +209,28 @@ async def generate_structured_output_async(*args, **kwargs):
 def should_use_reasoning(query: str, recent_history: list[tuple[str, str]]) -> bool:
   """Determine if a query needs multi-step reasoning.
 
-  Use reasoning when:
-  1. Query contains pronouns ("he", "she", "it", "that") that need resolution
-  2. Query is a comparison that might need additional lookups
-  3. Query references previous conversation
+  Only use reasoning when the query genuinely requires an external lookup that
+  cannot be answered from conversation history alone. Conversational follow-ups
+  ("what was that?", "tell me more", "go on") must stay on the standard path.
   """
-  query_lower = query.lower()
+  query_lower = query.lower().strip()
 
-  # Pronouns that likely need context
-  pronouns = ["he ", "she ", "it ", "they ", "that ", "this ", "those ", "these "]
-  has_pronoun = any(p in query_lower for p in pronouns)
-
-  # Comparison keywords
-  comparisons = [
-    "compare",
-    "vs",
-    "versus",
-    "bigger",
-    "smaller",
-    "taller",
-    "shorter",
-    "better",
-    "worse",
-  ]
+  # Comparisons that likely need two separate lookups
+  comparisons = ["compare", "vs", "versus", "bigger", "smaller", "taller", "shorter", "better", "worse"]
   has_comparison = any(c in query_lower for c in comparisons)
 
-  # Questions that likely need lookup
-  needs_lookup = any(
-    phrase in query_lower
-    for phrase in ["is he", "is she", "is it", "are they", "which one", "which is"]
-  )
+  # Pronoun + question-word combos that signal an external fact is needed
+  # e.g. "how tall is he", "where is she from", "what is it made of"
+  # Exclude bare "what was that / what did you say" style clarifications
+  pronoun_lookup_patterns = [
+    "how tall is", "how old is", "where is he", "where is she", "where is it",
+    "where are they", "what does he", "what does she", "what does it",
+    "who is he", "who is she", "who are they",
+    "is he taller", "is she taller", "is it bigger", "are they",
+  ]
+  has_pronoun_lookup = any(p in query_lower for p in pronoun_lookup_patterns)
 
-  # Use reasoning if we have conversation history AND any trigger
-  if recent_history and (has_pronoun or has_comparison or needs_lookup):
+  if recent_history and (has_comparison or has_pronoun_lookup):
     return True
 
   return False

@@ -3,7 +3,7 @@ import os
 os.environ["GGML_METAL_LOG_LEVEL"] = "0"
 os.environ["GGML_LOG_LEVEL"] = "0"
 
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 from typing import Optional
 

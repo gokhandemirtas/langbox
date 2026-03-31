@@ -3,7 +3,7 @@ from datetime import date
 
 import feedparser
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
+from utils.log import logger
 
 from agents.agent_factory import create_llm
 from db.schemas import Newsfeed

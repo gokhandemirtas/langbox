@@ -4,11 +4,12 @@ import os
 from datetime import date, datetime
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
+from utils.log import logger
 
 from db.schemas import Journal, JournalEntry
+from agents.persona import AGENT_NAME
 
-_SUMMARY_PROMPT = """You are summarising a day's conversation log between a user and their personal assistant AIDA.
+_SUMMARY_PROMPT = f"""You are summarising a day's conversation log between a user and their personal assistant {AGENT_NAME}.
 Write a concise, factual summary (3-8 sentences) covering the key topics discussed, decisions made, and anything the user expressed interest in or asked to follow up on.
 Write in third person. Be specific — include names, numbers, and topics mentioned. Do not add commentary or opinions."""
 
@@ -43,7 +44,7 @@ async def summarize_pending_journal() -> str | None:
     for e in journal.entries:
         ts = e.timestamp.strftime("%H:%M")
         lines.append(f"[{ts}] User: {e.question}")
-        lines.append(f"[{ts}] AIDA: {e.answer}")
+        lines.append(f"[{ts}] {AGENT_NAME}: {e.answer}")
     log_text = "\n".join(lines)
 
     from agents.agent_factory import create_llm

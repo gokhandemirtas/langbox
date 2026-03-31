@@ -17,7 +17,7 @@ os.environ["LLAMA_CPP_LOG_LEVEL"] = "0"
 
 from datetime import datetime
 
-from loguru import logger
+from utils.log import logger
 
 from skills.reminder.list import handle_list_reminders
 from skills.weather.skill import _query_weather as query_weather

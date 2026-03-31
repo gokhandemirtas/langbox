@@ -2,7 +2,7 @@
 
 from datetime import datetime, timedelta
 
-from loguru import logger
+from utils.log import logger
 
 from db.schemas import Reminders
 

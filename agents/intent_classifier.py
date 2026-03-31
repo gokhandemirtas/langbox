@@ -3,11 +3,18 @@ import os
 import sys
 import time
 
-from loguru import logger
+from rich.console import Console
+from rich.live import Live
+from rich.spinner import Spinner
+from rich.text import Text
+
+from utils.log import logger
+
+_console = Console(stderr=True, force_terminal=True)
 
 from agents.router import route_intent
 from pydantic_types.intent_response import IntentResponse
-from skills.conversation.skill import get_recent_history
+from skills.conversation.skill import get_current_topic, get_recent_history
 from tts.tts import speak
 from utils.llm_structured_output import generate_structured_output
 
@@ -82,6 +89,7 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 - Follow-up questions with no domain keywords: "which one is warmer?", "which is better?", "what did you just say?"
 - References to numbered items in a previous answer: "explain number 5", "tell me more about the third one", "what about item 2?"
 - Nonsensical or out-of-domain input: "banana elephant purple", "I am ozymandias"
+- Requests for physical actions the assistant cannot perform: "fry an egg", "make me coffee", "drive me somewhere", "cook dinner", "open the door", "pour me a drink"
 - **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, I don't like, I prefer, I hate, which one, number, item, the first, the second, the third
 
 ## Classification Rules
@@ -96,6 +104,7 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 7. Messages directed at the assistant (feedback, corrections, greetings) → CHAT
 8. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT. References to numbered or ordered items from a prior response ("explain number 5", "what about item 3", "tell me more about the first one") → always CHAT.
 9. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
+9c. Requests for physical actions the assistant cannot perform (cooking, driving, fetching objects, opening doors) → CHAT
 9a. Any request asking the assistant to ask/quiz/interview the user about something → CHAT
 9b. Personal statements, preferences, or opinions with NO action keyword ("I don't like X", "I prefer Y", "that's too X") when conversation history is present → CHAT
 10. When in doubt among general questions → INFORMATION_QUERY
@@ -127,6 +136,10 @@ User: "which one is warmer?" → CHAT
 User: "what about item 2?" → CHAT
 User: "you were wrong about that" → CHAT
 User: "banana elephant purple" → CHAT
+User: "fry an egg for me" → CHAT
+User: "make me a coffee" → CHAT
+User: "drive me to the airport" → CHAT
+User: "open the door" → CHAT
 User: "interesting" (after a prior response) → CHAT
 User: "cool" (after a prior response) → CHAT
 User: "wow" (after a prior response) → CHAT
@@ -142,13 +155,19 @@ User: "I prefer warm weather" (after weather discussion) → CHAT
 def _build_classifier_prompt(user_query: str) -> str:
   """Prepend recent conversation history so the classifier can resolve follow-ups."""
   history = get_recent_history(n=4)
-  if not history:
+  topic = get_current_topic()
+
+  if not history and not topic:
     return user_query
 
-  lines = ["## Recent conversation"]
-  for human, assistant in history:
-    lines.append(f"User: {human}")
-    lines.append(f"Assistant: {assistant[:600]}")  # truncate long responses
+  lines = []
+  if topic:
+    lines.append(f"## Current topic: {topic}")
+  if history:
+    lines.append("## Recent conversation")
+    for human, assistant in history:
+      lines.append(f"User: {human}")
+      lines.append(f"Assistant: {assistant[:600]}")  # truncate long responses
   lines.append(f"\nCurrent query: {user_query}")
   return "\n".join(lines)
 
@@ -163,14 +182,15 @@ async def run_intent_classifier(user_query: str) -> str:
   logger.debug("Invoking primary intent classifier")
   logger.debug(f"Classifier input:\n{classifier_input}")
 
-  result = await asyncio.to_thread(
-    generate_structured_output,
-    model_name=os.environ["MODEL_GENERALIST"],
-    user_prompt=classifier_input,
-    system_prompt=_INTENT_PROMPT,
-    pydantic_model=IntentResponse,
-    max_tokens=100,
-  )
+  with Live(Spinner("dots", text=Text("tinkering", style="dim")), console=_console, transient=True):
+    result = await asyncio.to_thread(
+      generate_structured_output,
+      model_name=os.environ["MODEL_GENERALIST"],
+      user_prompt=classifier_input,
+      system_prompt=_INTENT_PROMPT,
+      pydantic_model=IntentResponse,
+      max_tokens=100,
+    )
   logger.debug(f"Classified intent: {result.intent}")
 
   handler_response = await route_intent(intent=result.intent, query=user_query)

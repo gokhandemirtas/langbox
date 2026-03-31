@@ -8,7 +8,7 @@ import outlines
 from json_repair import repair_json
 from langsmith import traceable
 from llama_cpp import Llama
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)

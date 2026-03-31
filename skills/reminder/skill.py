@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 from skills.reminder.create import handle_create_reminder

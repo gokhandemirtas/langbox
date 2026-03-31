@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from huggingface_hub import hf_hub_download
-from loguru import logger
+from utils.log import logger
 
 # Registry mapping GGUF filenames to their HuggingFace repository IDs.
 # Update these entries when adding new models to .env.

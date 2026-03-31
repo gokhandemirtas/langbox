@@ -6,7 +6,7 @@ from typing import Optional
 
 from langchain.agents import create_agent
 from langchain_community.chat_models import ChatLlamaCpp
-from loguru import logger
+from utils.log import logger
 
 from utils.llm_structured_output import _get_or_load_llama, _model_path
 

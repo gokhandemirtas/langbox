@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from loguru import logger
+from utils.log import logger
 
 from db.schemas import Reminders
 from skills.reminder.parser import format_reminder_display, parse_reminder_date

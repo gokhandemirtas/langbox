@@ -17,7 +17,9 @@
       "Bash(uv run:*)",
       "Bash(hf download mradermacher/Qwen2.5-7B-Instruct-GGUF Qwen2.5-7B-Instruct.Q4_K_M.gguf --local-dir .)",
       "Bash(hf download mradermacher/Phi-4-GGUF Phi-4.Q4_K_M.gguf --local-dir .)",
-      "Bash(hf download bartowski/gemma-2-9b-it-GGUF gemma-2-9b-it-Q4_K_M.gguf --local-dir .)"
+      "Bash(hf download bartowski/gemma-2-9b-it-GGUF gemma-2-9b-it-Q4_K_M.gguf --local-dir .)",
+      "Bash(xargs sed:*)",
+      "Bash(kill %1)"
     ],
     "deny": [],
     "ask": []

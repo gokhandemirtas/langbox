@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Literal
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 from agents.agent_factory import create_llm

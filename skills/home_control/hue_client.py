@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 import urllib3
 from huesdk import Hue
-from loguru import logger
+from utils.log import logger
 
 from db.schemas import Credentials, HueConfiguration, HueLight, HueLightGroup
 

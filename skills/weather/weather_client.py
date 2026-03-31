@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel, Field
 
 from utils.http_client import HTTPClient

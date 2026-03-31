@@ -9,8 +9,9 @@ Available commands:
   /help           — list available commands
 """
 
-from loguru import logger
+from utils.log import logger
 
+from agents.persona import AGENT_IDENTITY, AGENT_NAME
 from skills.conversation.skill import _history
 
 # ---------------------------------------------------------------------------
@@ -41,13 +42,13 @@ async def cmd_save() -> None:
     history_text = _format_history()
 
     from langchain_core.messages import HumanMessage, SystemMessage
-    from agents.agent_factory import create_llm
+    from skills.conversation.skill import _get_llm
 
-    llm = create_llm(max_tokens=512, temperature=0.3)
+    llm = _get_llm()
     summary_prompt = (
-        "Summarise the following conversation concisely. "
-        "Capture the key topics discussed and any conclusions or answers given. "
-        "Write in third-person past tense."
+        f"{AGENT_IDENTITY} Summarise the following conversation between you and the user. "
+        "Write in first person — 'I told the user...', 'the user asked me...'. "
+        "Capture the key topics discussed and any conclusions or answers given. Be concise."
     )
     response = await llm.ainvoke([
         SystemMessage(content=summary_prompt),
@@ -115,6 +116,28 @@ async def cmd_analyze() -> None:
         print(f"[/analyze] Done ({count} exchange(s) scanned). No new personal facts found.")
 
 
+async def cmd_ctx() -> None:
+    import os
+    from utils.llm_structured_output import _get_or_load_llama, _model_path
+
+    model_name = os.environ.get("MODEL_GENERALIST")
+    n_ctx = int(os.environ.get("MODEL_CTX", 8192))
+    full_path = _model_path(model_name)
+    llama = _get_or_load_llama(model_name, full_path, -1, {})
+
+    history_text = _format_history()
+    tokens = llama.tokenize(history_text.encode()) if history_text else []
+    used = len(tokens)
+    pct = used / n_ctx * 100
+
+    bar_width = 40
+    filled = int(bar_width * used / n_ctx)
+    bar = "█" * filled + "░" * (bar_width - filled)
+
+    print(f"\n[/ctx] Context usage: {used:,} / {n_ctx:,} tokens ({pct:.1f}%)")
+    print(f"       [{bar}]\n")
+
+
 async def cmd_help() -> None:
     print(
         "\nAvailable commands:\n"
@@ -122,6 +145,7 @@ async def cmd_help() -> None:
         "  /clear          — wipe the in-memory conversation history\n"
         "  /history        — print session history to the terminal\n"
         "  /analyze        — extract personal facts from this session into your persona profile\n"
+        "  /ctx            — show context window usage for the current session\n"
         "  /planner <task> — run an autonomous multi-step planning agent\n"
         "  /help           — show this message\n"
     )
@@ -132,6 +156,7 @@ _COMMANDS = {
     "/clear": cmd_clear,
     "/history": cmd_history,
     "/analyze": cmd_analyze,
+    "/ctx": cmd_ctx,
     "/planner": cmd_planner,
     "/help": cmd_help,
 }

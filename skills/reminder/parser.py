@@ -3,7 +3,7 @@
 from datetime import datetime
 
 import fuzzydate as fd
-from loguru import logger
+from utils.log import logger
 
 
 def parse_time(date_input: str) -> int:

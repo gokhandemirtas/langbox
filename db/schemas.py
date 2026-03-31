@@ -74,6 +74,7 @@ class UserPersona(Document):
 
   # Explicitly stated demographics
   name: Optional[str] = None                # first name or preferred name
+  gender: Optional[str] = None              # "male" | "female" — only set when explicitly stated
   date_of_birth: Optional[str] = None       # "YYYY-MM-DD" — only set when user states it explicitly
   location: Optional[str] = None            # city or country
   profession: Optional[str] = None

@@ -2,7 +2,7 @@
 
 import os
 
-from loguru import logger
+from utils.log import logger
 
 from utils.http_client import HTTPClient
 

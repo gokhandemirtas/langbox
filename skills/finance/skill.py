@@ -8,7 +8,7 @@ from typing import Optional
 
 import yfinance as yf
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 from agents.agent_factory import create_llm_agent
@@ -149,7 +149,7 @@ def handle_finance_stocks(query: str, retry_count: int = 0) -> str:
 
     try:
         comment = _comment_on_data(query, stock_data)
-        logger.info(f"Raw comment: {comment}")
+        logger.debug(f"Raw comment: {comment}")
         return comment
     except Exception as error:
         logger.error(f"An error occurred: {error}")

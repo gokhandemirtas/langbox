@@ -1,17 +1,15 @@
-import asyncio
 import os
 from datetime import datetime
 from enum import Enum
 
-from ddgs import DDGS
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
 from pydantic import BaseModel
-from tavily import TavilyClient
 
 from agents.agent_factory import create_llm
 from skills.information.prompts import informationIntentPrompt
 from utils.llm_structured_output import generate_structured_output
+from utils.log import logger
+from utils.search import web_search
 
 
 class QueryType(str, Enum):
@@ -45,46 +43,6 @@ def _get_contextual_answer(keyword: str) -> str:
     return f"Current date and time: {now.strftime('%A, %B %d, %Y %H:%M:%S')}."
 
 
-def _search_ddg(query: str) -> list[str]:
-  try:
-    results = DDGS().text(query, max_results=5)
-    lines = [
-      f"- {r.get('title', '')}: {r.get('body', '').replace(chr(10), ' ')} ({r.get('href', '')})"
-      for r in (results or [])
-    ]
-    logger.debug(f"DuckDuckGo returned {len(lines)} results for '{query}'")
-    return lines
-  except Exception as e:
-    logger.warning(f"DuckDuckGo search failed: {e}")
-    return []
-
-
-def _search_tavily(query: str) -> list[str]:
-  api_key = os.environ.get("TAVILY_API_KEY")
-  if not api_key:
-    return []
-  try:
-    results = TavilyClient(api_key=api_key).search(query, max_results=5).get("results", [])
-    lines = [
-      f"- {r.get('title', '')}: {r.get('content', '').replace(chr(10), ' ')} ({r.get('url', '')})"
-      for r in results
-    ]
-    logger.debug(f"Tavily returned {len(lines)} results for '{query}'")
-    return lines
-  except Exception as e:
-    logger.warning(f"Tavily search failed: {e}")
-    return []
-
-
-async def _search_web(query: str) -> str | None:
-  ddg_results, tavily_results = await asyncio.gather(
-    asyncio.to_thread(_search_ddg, query),
-    asyncio.to_thread(_search_tavily, query),
-  )
-  combined = ddg_results + tavily_results
-  return "\n".join(combined) if combined else None
-
-
 async def _llm_fallback(query: str) -> str:
   llm = create_llm(model_name=os.environ.get("MODEL_GENERALIST"), temperature=0.3)
   response = await llm.ainvoke([
@@ -102,9 +60,9 @@ async def handle_information_query(query: str) -> str:
   if intent.query_type.value == "contextual":
     return _get_contextual_answer(intent.keyword)
 
-  web_results = await _search_web(query)
+  web_results = await web_search(query)
   if web_results:
     return web_results
 
-  logger.debug("DuckDuckGo returned no results, falling back to LLM")
+  logger.debug("Search engines returned no results, falling back to LLM")
   return await _llm_fallback(query)

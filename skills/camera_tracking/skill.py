@@ -3,7 +3,7 @@ import time
 
 import cv2
 from deepface import DeepFace
-from loguru import logger
+from utils.log import logger
 
 _tracking_thread: threading.Thread | None = None
 _stop_event = threading.Event()

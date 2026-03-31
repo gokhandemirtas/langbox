@@ -2,7 +2,7 @@ import asyncio
 import os
 from typing import Literal
 
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 from skills.transportation.ors_client import format_directions, geocode, get_directions

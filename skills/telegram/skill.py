@@ -2,9 +2,10 @@ import os
 import tempfile
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from loguru import logger
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters
+
+from utils.log import logger
 
 _TELEGRAM_MAX_CHARS = 4096
 _tts_enabled: bool = False
@@ -40,6 +41,7 @@ async def _fit_response(text: str) -> str:
 async def _transcribe_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> str | None:
     """Download and transcribe a voice or audio message. Returns transcribed text or None on failure."""
     import asyncio
+
     from stt.stt import transcribe
 
     file = await (update.message.voice or update.message.audio).get_file()
@@ -150,4 +152,4 @@ async def start_telegram_bot() -> None:
     await app.start()
     await app.updater.start_polling()
 
-    logger.info("Telegram bot started and polling")
+    return "Telegram bot started and polling"

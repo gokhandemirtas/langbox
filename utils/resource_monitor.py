@@ -1,10 +1,11 @@
 """Background thread that logs VRAM and system memory usage every N seconds."""
 
 import os
+import sys
 import threading
 
 import psutil
-from loguru import logger
+from log import logger
 from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlInit
 
 
@@ -29,11 +30,12 @@ def _monitor_loop(interval: float, stop_event: threading.Event):
     sys_used = sys_mem.used / 1024**2
     sys_total = sys_mem.total / 1024**2
 
-    logger.info(
+    line = (
       f"[monitor] VRAM: {gpu_used:.0f}/{gpu_total:.0f}MB | "
       f"RAM (process): {rss:.0f}MB | "
       f"RAM (system): {sys_used:.0f}/{sys_total:.0f}MB"
     )
+    print(f"\r{line:<80}", end="", flush=True, file=sys.stderr)
 
 
 _stop_event: threading.Event | None = None

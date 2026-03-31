@@ -14,9 +14,9 @@ naturally. Private notes are stored in DB only and never surfaced to the user.
 import asyncio
 import re
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
-from loguru import logger
+from utils.log import logger
 from pydantic import BaseModel
 
 
@@ -31,6 +31,7 @@ class PersonalContentCheck(BaseModel):
 class PersonaUpdate(BaseModel):
     # Explicitly stated demographics
     name: str = "unknown"
+    gender: Literal["male", "female", "unknown"] = "unknown"
     date_of_birth: str = "unknown"        # as stated by the user, e.g. "5th March 1990", "March 5"
     location: str = "unknown"             # city or country
     profession: str = "unknown"
@@ -50,8 +51,6 @@ class PersonaUpdate(BaseModel):
     likes: list[str] = []
     dislikes: list[str] = []
 
-    # Free-form facts that don't fit the schema
-    facts: list[str] = []
 
 
 _CHECK_PROMPT = """Does the user's message reveal anything personal about themselves?
@@ -60,7 +59,6 @@ Asking about weather, stocks, news, or directions is NOT personal. Saying "I don
 Return true if the user revealed something personal, false otherwise."""
 
 _EXTRACT_PROMPT = """You are a silent observer analysing a single exchange between a user and their AI assistant.
-Extract facts about the USER ONLY — based solely on what the USER said, not what the assistant said.
 
 IMPORTANT: The assistant may be wrong, hallucinating, or making things up. Never extract a fact because the assistant stated it. Only extract facts the user themselves expressed.
 
@@ -68,6 +66,7 @@ Rules:
 - Only extract what is directly stated or very strongly implied by the USER. Do not guess wildly.
 - date_of_birth: ONLY set if the USER explicitly states their own birthday or birth year in their own words. Output exactly as the user said it (e.g. "5th March 1990", "March 5th", "1990-03-05"). Do not reformat. If the assistant mentioned a date but the user did not confirm it, leave this "unknown".
 - name: only set if the user refers to themselves by name or confirms a name they were addressed by.
+- gender: "male" or "female" only if the user explicitly states it. Use "unknown" otherwise.
 - location: city or country only if mentioned. Do not infer from topics discussed.
 - Big Five dimensions (openness, conscientiousness, extraversion, agreeableness, neuroticism):
   Set to "low", "medium", or "high" only when there is a clear signal in this exchange. Use "unknown" if unsure.
@@ -75,7 +74,6 @@ Rules:
   expressing worry/anxiety → high neuroticism; preferring solo activities → low extraversion.
 - communication_style: infer from how the user writes ("formal", "casual", "technical", "mixed").
 - likes / dislikes: return only NEW items found in this exchange. Empty list if nothing new.
-- facts: free-form facts that don't fit other fields (e.g. "has two kids", "vegetarian", "runs marathons").
 - Use "unknown" for string fields where you found nothing.
 
 Return a JSON object matching the schema exactly."""
@@ -99,6 +97,8 @@ def _build_persona_context(persona) -> str:
 
     if persona.name:
         lines.append(f"- Name: {persona.name}")
+    if persona.gender:
+        lines.append(f"- Gender: {persona.gender}")
     if persona.date_of_birth:
         try:
             from datetime import datetime
@@ -125,12 +125,43 @@ def _build_persona_context(persona) -> str:
         trait_str = ", ".join(f"{k}: {v}" for k, v in known.items())
         lines.append(f"- Personality (Big Five): {trait_str}")
 
+        # Translate traits into behavioral directives
+        directives = []
+        if known.get("openness") == "high":
+            directives.append("engage with abstract ideas and hypotheticals — this person enjoys intellectual exploration")
+        elif known.get("openness") == "low":
+            directives.append("be concrete and practical — avoid abstract tangents")
+
+        if known.get("conscientiousness") == "high":
+            directives.append("be precise and structured — this person values accuracy and detail")
+        elif known.get("conscientiousness") == "low":
+            directives.append("keep it loose and flexible — avoid rigid or overly structured responses")
+
+        if known.get("extraversion") == "low":
+            directives.append("be concise — don't over-chat or pad responses")
+        elif known.get("extraversion") == "high":
+            directives.append("be warm and conversational — this person enjoys engagement")
+
+        if known.get("agreeableness") == "low":
+            directives.append("be direct and honest even if blunt — don't soften things unnecessarily")
+        elif known.get("agreeableness") == "high":
+            directives.append("use a collaborative, empathetic tone")
+
+        if known.get("neuroticism") == "high":
+            directives.append("be calm and reassuring — avoid alarming language or unnecessary uncertainty")
+        elif known.get("neuroticism") == "low":
+            directives.append("be straightforward — this person handles direct information without needing softening")
+
+        if directives:
+            lines.append("\n## How to respond to this person:")
+            for d in directives:
+                lines.append(f"- {d}")
+
     if persona.likes:
         lines.append(f"- Likes: {', '.join(persona.likes)}")
     if persona.dislikes:
         lines.append(f"- Dislikes: {', '.join(persona.dislikes)}")
-    if persona.facts:
-        lines.append(f"- Other: {', '.join(persona.facts)}")
+
 
     return "\n".join(lines)
 
@@ -144,7 +175,7 @@ def _build_changes(existing, update: PersonaUpdate) -> dict:
     changes = {}
 
     # Scalar fields: only set if not already known
-    for field in ("name", "location", "profession", "communication_style"):
+    for field in ("name", "gender", "location", "profession", "communication_style"):
         val = getattr(update, field)
         if val and val != "unknown" and not getattr(existing, field):
             changes[field] = val
@@ -163,7 +194,7 @@ def _build_changes(existing, update: PersonaUpdate) -> dict:
             changes[field] = val
 
     # List fields: append new items only
-    for field in ("likes", "dislikes", "facts"):
+    for field in ("likes", "dislikes"):
         current: list = getattr(existing, field) or []
         new_items = [x for x in getattr(update, field) if x not in current]
         if new_items:
@@ -263,7 +294,7 @@ async def update_persona_from_exchange(question: str, answer: str) -> None:
         logger.error(f"[personalizer] Update failed: {e}")
 
 
-async def start_personalizer() -> None:
+async def start_personalizer() -> str | None:
     """Load existing persona from DB on startup."""
     global _cached_persona_context
     try:
@@ -271,6 +302,6 @@ async def start_personalizer() -> None:
         existing = await UserPersona.find_one()
         if existing:
             _cached_persona_context = _build_persona_context(existing)
-            logger.debug("[personalizer] Loaded existing persona from DB.")
+            return "[personalizer] Loaded existing persona from DB."
     except Exception as e:
         logger.warning(f"[personalizer] Could not load existing persona: {e}")

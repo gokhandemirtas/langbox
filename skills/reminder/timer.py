@@ -3,7 +3,7 @@
 import asyncio
 import time
 
-from loguru import logger
+from utils.log import logger
 
 from skills.reminder.parser import parse_time
 
