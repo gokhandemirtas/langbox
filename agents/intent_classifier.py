@@ -77,7 +77,13 @@ News, headlines, and current events.
 Wikipedia/knowledge lookup. Triggered by: "find out", "tell me about", "what is", "who is", "explain".
 - "find out what photosynthesis is", "tell me about the French Revolution", "what is quantum computing"
 
-### 8. SEARCH
+### 8. NOTES
+Create, list, read, or delete personal notes.
+- "save a note about...", "note that...", "show my notes", "read my note on X", "delete note X"
+- **Keywords:** note, notes, save a note, remember this, my notes
+- Category tags trigger NOTES when combined with listing: "show my read list", "what do I want to watch"
+
+### 9. SEARCH
 Web search for any topic, person, film, product, or general query. Triggered by: "search", "look up", "google", or any standalone topic/name with no other intent keyword.
 - "search hellraiser", "look up Elon Musk", "google best pizza in London", "hellraiser"
 
@@ -98,25 +104,26 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 2. "timer", "reminder", "alarm", "remind me", "set a timer", "my calendar", "my schedule" → always REMINDER. The word "today" alone does NOT indicate REMINDER — it must appear with explicit scheduling words.
 3. "news", "headlines", "current events", "what's happening" → always NEWSFEED
 4. "weather", "forecast", "temperature", "rain", "snow", "humid" anywhere in the query → always WEATHER
-5. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
-6. SEARCH triggers on "search", "look up", "google", or a bare topic/name with no other domain keywords
-7. INFORMATION_QUERY triggers on "find out", "tell me about", "what is", "who is", "explain"
-7. Messages directed at the assistant (feedback, corrections, greetings) → CHAT
-8. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT. References to numbered or ordered items from a prior response ("explain number 5", "what about item 3", "tell me more about the first one") → always CHAT.
-9. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
-9c. Requests for physical actions the assistant cannot perform (cooking, driving, fetching objects, opening doors) → CHAT
-9a. Any request asking the assistant to ask/quiz/interview the user about something → CHAT
-9b. Personal statements, preferences, or opinions with NO action keyword ("I don't like X", "I prefer Y", "that's too X") when conversation history is present → CHAT
-10. When in doubt among general questions → INFORMATION_QUERY
-11. Choose the single MOST specific intent
-12. If the query contains the word "news" (in any form), ALWAYS classify as NEWSFEED.
+5. "take a note", "save a note", "note that", "note:", "add a note", "show my notes", "list my notes", "list notes", "delete note", "read my note" → always NOTES, even when conversation history is present
+6. TRANSPORTATION requires intent to physically travel — geography questions are INFORMATION_QUERY
+7. SEARCH triggers on "search", "look up", "google", or a bare topic/name with no other domain keywords
+8. INFORMATION_QUERY triggers on "find out", "tell me about", "what is", "who is", "explain"
+9. Messages directed at the assistant (feedback, corrections, greetings) → CHAT
+10. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT. References to numbered or ordered items from a prior response ("explain number 5", "what about item 3", "tell me more about the first one") → always CHAT.
+11. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
+11c. Requests for physical actions the assistant cannot perform (cooking, driving, fetching objects, opening doors) → CHAT
+11a. Any request asking the assistant to ask/quiz/interview the user about something → CHAT
+11b. Personal statements, preferences, or opinions with NO action keyword ("I don't like X", "I prefer Y", "that's too X") when conversation history is present → CHAT
+12. When in doubt among general questions → INFORMATION_QUERY
+13. Choose the single MOST specific intent
+14. If the query contains the word "news" (in any form), ALWAYS classify as NEWSFEED.
 
 
 ## Response Format
 
 Respond with EXACTLY ONE WORD — the intent name in uppercase.
 
-Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER, NEWSFEED, INFORMATION_QUERY, SEARCH, CHAT
+Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER, NEWSFEED, INFORMATION_QUERY, NOTES, SEARCH, CHAT
 
 Examples:
 User: "turn on the lights" → HOME_CONTROL
@@ -127,6 +134,9 @@ User: "set a timer for 10 minutes" → REMINDER
 User: "news today" → NEWSFEED
 User: "find out what photosynthesis is" → INFORMATION_QUERY
 User: "what is quantum computing" → INFORMATION_QUERY
+User: "save a note about Dune" → NOTES
+User: "show my notes" → NOTES
+User: "read my note on Dune" → NOTES
 User: "search hellraiser" → SEARCH
 User: "look up Blade Runner" → SEARCH
 User: "hellraiser" → SEARCH

@@ -7,7 +7,7 @@ from beanie import init_beanie
 from mcp.server.fastmcp import FastMCP
 
 # Initialize FastMCP server
-mcp = FastMCP("langbox-mongodb")
+mcp = FastMCP("langbox-mongodb", port=8181)
 
 # MongoDB connection configuration
 MONGODB_HOST = os.getenv("MONGODB_HOST", "localhost")

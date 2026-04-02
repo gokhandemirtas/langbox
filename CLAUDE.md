@@ -52,19 +52,24 @@ User input (CLI or Telegram)
 ### Intent Classification
 
 `agents/intent_classifier.py`:
-- Prepends last 4 conversation exchanges for follow-up awareness
+- Prepends last 4 conversation exchanges AND current topic (`## Current topic:`) for follow-up awareness
 - Calls `generate_structured_output()` with `IntentResponse` — outlines guarantees a valid intent literal
 - `IntentResponse.intent` is a single `Literal[...]` — one intent per query
+- Displays a "tinkering" Rich spinner while the LLM runs
 - Returns the response string (used by both CLI and Telegram)
+- On Ctrl+C, `cmd_save()` is called before exit to persist the session summary
 
 Valid intents: `HOME_CONTROL`, `WEATHER`, `FINANCE_STOCKS`, `TRANSPORTATION`, `REMINDER`, `NEWSFEED`, `INFORMATION_QUERY`, `SEARCH`, `CHAT`
 
 **Follow-up rule (highest priority)**: If a `## Recent conversation` section is present and the query references it, always classify as `CHAT`. Action requests following a domain response ("add to my watchlist", "save this", "track this") are always CHAT follow-ups, not new domain intents.
 
+**Out-of-domain physical requests** ("fry an egg", "make me coffee", "drive me somewhere") → always `CHAT` so the persona can respond playfully.
+
 ### Router
 
 `agents/router.py`:
 - Looks up skill in `SKILL_MAP` by intent string
+- For `SEARCH` and `INFORMATION_QUERY`: enriches short follow-up queries (≤6 words) by appending `_current_topic` so "a jamie oliver recipe" becomes "a jamie oliver recipe egg recipe"
 - Calls `skill.handle(query=query)` (async or sync)
 - If `skill.needs_wrapping=True` → passes raw response to `handle_conversation()`
 - Falls back to `CHAT` for unrecognised intents
@@ -105,9 +110,27 @@ Skills with `needs_wrapping=True` return raw data strings — `handle_conversati
 ### Conversation Skill (`skills/conversation/skill.py`)
 
 Handles two roles:
-- `handle_chat(query)` — CHAT intent; injects full rolling history (`_history`, max 20 exchanges)
-- `handle_conversation(query, handler_response)` — wraps raw skill output into natural language (stateless, no history)
+- `handle_chat(query)` — CHAT intent; serialises rolling history into a single prompt, calls `generate_structured_output()` with `_ChatResponse(topic, answer)`
+- `handle_conversation(query, handler_response)` — wraps raw skill output into natural language, calls `generate_structured_output()` with `_ConversationResponse(topic, answer)`
+- Both functions update `_current_topic` from the structured output result in the same inference pass — no separate call needed
 - `get_recent_history(n)` — used by the intent classifier to prepend context
+- `get_current_topic()` — returns the active topic label; used by the intent classifier and router
+
+**Topic tracking**: after every exchange (skill or chat), a 3–5 word topic label (e.g. `"Tesla Q4 earnings"`, `"weather in London"`) is stored in `_current_topic`. This is injected into the classifier prompt as `## Current topic:` so follow-up queries resolve correctly even when vague.
+
+**Rolling history**: `_history` deque (max 20 messages). When near capacity, the oldest half is compressed into `_rolling_summary` by the LLM and injected into the system prompt.
+
+### ReAct Reasoning Engine (`skills/conversation/reasoning_engine.py`)
+
+Triggered from `handle_chat` when `should_use_reasoning()` returns `True`.
+
+`should_use_reasoning` only activates for queries that genuinely need an external lookup — specifically pronoun+question-word combos (`"how tall is he"`, `"where is she from"`) or comparison keywords (`"vs"`, `"taller"`, `"bigger"`). Short conversational follow-ups (`"what was that?"`, `"tell me more"`) stay on the standard CHAT path.
+
+ReAct loop rules:
+- If the answer is already in conversation history or observations → `RESPOND` immediately
+- If the query asks the assistant to clarify something it already said → `RESPOND` from context
+- After 2+ observations, strongly prefer `RESPOND` rather than looping further
+- Max steps: 5 (safety cap)
 
 ### Background Services (not in SKILL_MAP)
 
@@ -141,6 +164,8 @@ Only one planner can run at a time (`asyncio.Lock`).
 
 Skill-specific Pydantic types are defined **inline in `skill.py`**, not in separate files.
 
+Now also used by the conversation skill — `_ConversationResponse` and `_ChatResponse` both include a `topic` field alongside `answer`, so topic extraction has zero extra latency.
+
 Shared types in `pydantic_types/`:
 - `intent_response.py` — `IntentResponse` with `IntentLiteral` type alias
 - `credentials.py` — `Credentials`
@@ -163,6 +188,17 @@ uv run python scripts/update_tickers.py  # pulls S&P 500 + FTSE 100 from Wikiped
 - Sub-classifies query with outlines to extract origin, destination, mode
 - Geocodes both locations, fetches turn-by-turn directions
 - Requires `ORS_API_KEY` in `.env`
+
+### Agent Persona (`agents/persona.py`)
+
+Central identity for the assistant. Imported by all skills and commands that need to establish who AIDA is.
+
+- `AGENT_NAME` — `"AIDA"`
+- `AGENT_IDENTITY` — one-line identity string, prefixes all system prompts
+- `AGENT_PREAMBLE` — full preamble used by `handle_chat`, includes:
+  - What AIDA **can** do (weather, stocks, home control, reminders, news, search, Wikipedia, directions, conversation)
+  - What AIDA **cannot** do (no physical form, no email/calls, no arbitrary web browsing)
+  - Roleplay instruction: never flatly refuse out-of-capability requests — acknowledge briefly, then play along, describe vividly, or make a joke
 
 ### Agent Factory (`agents/agent_factory.py`)
 
@@ -195,12 +231,13 @@ All schemas must be registered in `db/init.py` `collections` list.
 langbox/
 ├── agents/
 │   ├── intent_classifier.py     # outlines classification + routing trigger
-│   ├── router.py                # SKILL_MAP dispatch + needs_wrapping logic
-│   └── agent_factory.py         # ChatLlamaCpp cache + LangGraph agent factory
+│   ├── router.py                # SKILL_MAP dispatch + query enrichment + needs_wrapping logic
+│   ├── agent_factory.py         # ChatLlamaCpp cache + LangGraph agent factory
+│   └── persona.py               # AIDA identity, capabilities, and roleplay instructions
 ├── skills/
 │   ├── base.py                  # Skill dataclass
 │   ├── registry.py              # SKILLS list + SKILL_MAP dict
-│   ├── conversation/            # CHAT intent + handle_conversation() wrapper
+│   ├── conversation/            # CHAT intent + handle_conversation() wrapper + ReAct engine
 │   ├── weather/                 # Open-Meteo forecast
 │   ├── finance/                 # yfinance + fuzzy ticker resolution
 │   ├── home_control/            # Philips Hue
@@ -219,7 +256,8 @@ langbox/
 ├── utils/
 │   ├── llm_structured_output.py # outlines + llama.cpp constrained generation
 │   ├── http_client.py           # aiohttp async client
-│   └── resource_monitor.py      # VRAM/RAM background monitor
+│   ├── resource_monitor.py      # VRAM/RAM background monitor
+│   └── log.py                   # central logger; also writes to /tmp/langbox_debug.log
 ├── db/
 │   ├── schemas.py               # Beanie document models
 │   ├── init.py                  # init_beanie() called at startup

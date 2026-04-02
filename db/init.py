@@ -10,13 +10,14 @@ from db.schemas import (
   HueConfiguration,
   Journal,
   Newsfeed,
+  Note,
   Plans,
   Reminders,
   UserPersona,
   Weather,
 )
 
-collections = [Credentials, HueConfiguration, Journal, Newsfeed, Plans, Reminders, UserPersona, Weather]
+collections = [Credentials, HueConfiguration, Journal, Newsfeed, Note, Plans, Reminders, UserPersona, Weather]
 
 
 async def db_init() -> str | None:

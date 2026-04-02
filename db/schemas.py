@@ -1,8 +1,10 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from beanie import Document
 from pydantic import BaseModel
+
+NoteCategory = Literal["read", "listen", "watch", "eat", "visit"]
 
 
 class HueLight(BaseModel):
@@ -68,6 +70,16 @@ class Journal(Document):
   summary: Optional[str] = None  # LLM-generated summary, written at next session start
 
 
+class Note(Document):
+  created_at: datetime
+  title: str                          # plain text
+  content: str                        # markdown
+  category: Optional[NoteCategory] = None
+
+  class Settings:
+    name = "Notes"
+
+
 class UserPersona(Document):
   last_updated: datetime
   exchanges_analyzed: int = 0
@@ -92,9 +104,6 @@ class UserPersona(Document):
   # Preferences
   likes: list[str] = []
   dislikes: list[str] = []
-
-  # Free-form facts that don't fit the schema
-  facts: list[str] = []
 
   # Meta
   confidence: float = 0.0

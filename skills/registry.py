@@ -6,6 +6,7 @@ from skills.finance import finance_skill
 from skills.home_control import home_control_skill
 from skills.information import information_skill
 from skills.newsfeed import newsfeed_skill
+from skills.notes import notes_skill
 from skills.reminder import reminder_skill
 from skills.search import search_skill
 from skills.transportation import transportation_skill
@@ -29,6 +30,7 @@ SKILLS: list[Skill] = [
     reminder_skill,
     newsfeed_skill,
     transportation_skill,
+    notes_skill,
     search_skill,
     chat_skill,
 ]

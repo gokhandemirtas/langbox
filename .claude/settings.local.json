@@ -19,9 +19,14 @@
       "Bash(hf download mradermacher/Phi-4-GGUF Phi-4.Q4_K_M.gguf --local-dir .)",
       "Bash(hf download bartowski/gemma-2-9b-it-GGUF gemma-2-9b-it-Q4_K_M.gguf --local-dir .)",
       "Bash(xargs sed:*)",
-      "Bash(kill %1)"
+      "Bash(kill %1)",
+      "Bash(uv --version)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true,
+  "enabledMcpjsonServers": [
+    "langbox-mongodb"
+  ]
 }

@@ -5,6 +5,7 @@ import sys
 from rich.console import Console
 
 from agents.intent_classifier import run_intent_classifier
+from api.server import start_api_server
 from commands import cmd_save, handle_command
 from db.init import db_init
 from skills.conversation.skill import enable_emote
@@ -61,6 +62,10 @@ async def main(debug: bool = False, emote: bool = False):
     from skills.camera_tracking.skill import start_tracking
     start_tracking()
 
+  if "--server-up" in sys.argv:
+    await start_api_server()
+
+  
   telegram_log = await start_telegram_bot()
   personalizer_log = await start_personalizer()
 
