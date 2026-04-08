@@ -3,10 +3,16 @@ from datetime import date
 
 import feedparser
 from langchain_core.messages import HumanMessage, SystemMessage
+from rich.console import Console
+from rich.live import Live
+from rich.spinner import Spinner
+from rich.text import Text
 from utils.log import logger
 
 from agents.agent_factory import create_llm
 from db.schemas import Newsfeed
+
+_console = Console(stderr=True, force_terminal=True)
 
 BBC_RSS_URL = "http://feeds.bbci.co.uk/news/rss.xml"
 
@@ -40,7 +46,8 @@ async def _fetch_news() -> str:
 
 async def handle_newsfeed(query: str) -> str:
   """Handle newsfeed queries by fetching and presenting BBC daily headlines."""
-  news_content = await _fetch_news()
+  with Live(Spinner("dots", text=Text("fetching news...", style="dim")), console=_console, transient=True):
+    news_content = await _fetch_news()
   logger.debug(f"Fetched news: {news_content[:200]}...")
 
   llm = create_llm(
@@ -60,9 +67,10 @@ Rules:
 - Do NOT add any facts not present in the news content.
 """
 
-  response = await llm.ainvoke([
-    SystemMessage(content=system_prompt),
-    HumanMessage(content=query),
-  ])
+  with Live(Spinner("dots", text=Text("reading the news...", style="dim")), console=_console, transient=True):
+    response = await llm.ainvoke([
+      SystemMessage(content=system_prompt),
+      HumanMessage(content=query),
+    ])
 
   return response.content

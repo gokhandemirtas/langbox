@@ -299,8 +299,14 @@ langbox/
 | `ORS_API_KEY` | Optional | OpenRouteService key (free at openrouteservice.org) |
 | `HUE_BRIDGE_IP` | Optional | Philips Hue bridge IP |
 | `REQUESTS_CA_BUNDLE` | Optional | Path to Hue bridge `.pem` cert |
+| `SPOTIFY_CLIENT_ID` | Optional | Spotify app client ID (developer.spotify.com) |
+| `SPOTIFY_CLIENT_SECRET` | Optional | Spotify app client secret |
 
-## MongoDB MCP Server
+## MCP Servers
+
+Both MCP servers are configured in `.mcp.json` at the project root. Start them before opening Claude Code.
+
+### MongoDB MCP Server (`mcp-server/mongodb/`, port 8181)
 
 Claude Code has direct MongoDB access via MCP tools (no bash needed):
 
@@ -310,4 +316,15 @@ Claude Code has direct MongoDB access via MCP tools (no bash needed):
 - `mcp__langbox-mongodb__get_recent_journal_entries` — `limit`
 - `mcp__langbox-mongodb__search_journal` — `searchText`, `limit`
 
-Configured in `.config/claude-code/mcp.json`. Requires Node.js and MongoDB running.
+Start: `cd mcp-server/mongodb && uv run python main.py`
+
+### Langbox API MCP Server (`mcp-server/langbox-api/`, port 8182)
+
+Wraps the running Langbox REST API (port 8000). Requires Langbox to be running (`uv run python main.py`).
+
+- `mcp__langbox-api__query` — send a natural language query through the full skill pipeline
+- `mcp__langbox-api__get_notes` — list notes (optional `category` filter)
+- `mcp__langbox-api__get_reminders` — list reminders (optional `include_completed`)
+- `mcp__langbox-api__health_check` — verify the API server is reachable
+
+Start: `cd mcp-server/langbox-api && uv run python main.py`

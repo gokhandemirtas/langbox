@@ -1,0 +1,10 @@
+[project]
+name = "mcp-server-langbox-api"
+version = "0.1.0"
+description = "MCP server exposing the Langbox REST API to Claude Code"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "mcp[cli]>=1.25.0",
+]

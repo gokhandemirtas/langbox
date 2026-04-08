@@ -9,6 +9,7 @@ from skills.newsfeed import newsfeed_skill
 from skills.notes import notes_skill
 from skills.reminder import reminder_skill
 from skills.search import search_skill
+from skills.spotify import spotify_skill
 from skills.transportation import transportation_skill
 from skills.weather import weather_skill
 
@@ -32,6 +33,7 @@ SKILLS: list[Skill] = [
     transportation_skill,
     notes_skill,
     search_skill,
+    spotify_skill,
     chat_skill,
 ]
 

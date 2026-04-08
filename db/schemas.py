@@ -33,6 +33,12 @@ class Credentials(Document):
   hueUsername: str
 
 
+class ServiceCredentials(Document):
+  """Generic per-service credential store. One document per service (e.g. 'spotify', 'hue')."""
+  service: str
+  data: dict  # flexible payload — tokens, usernames, expiry timestamps, etc.
+
+
 class HueConfiguration(Document):
   groups: list[HueLightGroup]
   lights: list[HueLight]

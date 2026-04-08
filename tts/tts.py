@@ -18,7 +18,7 @@ from pocket_tts import TTSModel
 _console = Console(stderr=True, force_terminal=True)
 
 voice_ids = ["alba", "marius", "javert", "jean", "fantine", "cosette", "eponine", "azelma"]
-active_voice_id = "javert"
+active_voice_id = "azelma"
 
 
 def _escape_listener(stop_event: threading.Event) -> None:

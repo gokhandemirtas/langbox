@@ -6,9 +6,12 @@ import urllib3
 from huesdk import Hue
 from utils.log import logger
 
-from db.schemas import Credentials, HueConfiguration, HueLight, HueLightGroup
+from db.schemas import HueConfiguration, HueLight, HueLightGroup
+from utils.auth.hue import HueAuthProvider
 
 urllib3.disable_warnings()
+
+_hue_auth = HueAuthProvider()
 
 
 class HueBridgeClient:
@@ -19,19 +22,13 @@ class HueBridgeClient:
 
   async def _get_hue_username(self) -> str:
     try:
-      username_doc = await Credentials.find_one()
-      if username_doc:
-        logger.debug("Hue Bridge username found")
-        return username_doc.hueUsername
-      else:
-        logger.debug("Hue Bridge username not found, retrieving")
-        username = await asyncio.to_thread(Hue.connect, bridge_ip=os.environ["HUE_BRIDGE_IP"])
-        new_record = Credentials(hueUsername=username)
-        await new_record.insert()
-        return username
-    except Exception as error:
-      logger.error(f"Error getting Hue username: {error}")
-      raise
+      username = await _hue_auth.get_username()
+      logger.debug("Hue Bridge username found")
+      return username
+    except RuntimeError:
+      logger.debug("Hue Bridge username not found, retrieving via link button")
+      await _hue_auth.connect()
+      return await _hue_auth.get_username()
 
   async def _get_hue_instance(self) -> Hue:
     try:

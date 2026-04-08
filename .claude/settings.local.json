@@ -20,7 +20,10 @@
       "Bash(hf download bartowski/gemma-2-9b-it-GGUF gemma-2-9b-it-Q4_K_M.gguf --local-dir .)",
       "Bash(xargs sed:*)",
       "Bash(kill %1)",
-      "Bash(uv --version)"
+      "Bash(uv --version)",
+      "Read(//home/gokhan/.claude/**)",
+      "Read(//home/gokhan/.config/claude/**)",
+      "mcp__langbox-api__query"
     ],
     "deny": [],
     "ask": []

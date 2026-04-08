@@ -10,7 +10,10 @@ class SkillFallback(Exception):
     pass
 
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    from utils.auth.base import AuthProvider
 
 
 @dataclass
@@ -30,6 +33,9 @@ class Skill:
         needs_wrapping: Whether the router should pass the skill's output
             through handle_conversation to produce natural language. Set False
             for skills that already return final natural language (e.g., CHAT).
+        auth_provider: Optional auth provider. If set, the router checks
+            is_connected() before dispatching. If not connected, connect() is
+            called and the skill is retried automatically on success.
     """
 
     id: str
@@ -37,3 +43,4 @@ class Skill:
     system_prompt: Optional[str]
     handle: Callable
     needs_wrapping: bool = True
+    auth_provider: Optional["AuthProvider"] = None

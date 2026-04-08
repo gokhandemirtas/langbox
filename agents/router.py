@@ -27,6 +27,19 @@ def _enrich_query(query: str, intent: str) -> str:
   return query
 
 
+async def _dispatch(skill, effective_query: str, original_query: str) -> str:
+  """Call skill.handle and apply needs_wrapping."""
+  if asyncio.iscoroutinefunction(skill.handle):
+    response = await skill.handle(query=effective_query)
+  else:
+    response = skill.handle(query=effective_query)
+
+  if not skill.needs_wrapping:
+    return response
+
+  return await handle_conversation(original_query, response)
+
+
 async def route_intent(intent: str, query: str) -> str:
   """Route a classified intent to its matching skill.
 
@@ -43,12 +56,13 @@ async def route_intent(intent: str, query: str) -> str:
   skill = SKILL_MAP[skill_id]
   effective_query = _enrich_query(query, skill_id)
 
-  if asyncio.iscoroutinefunction(skill.handle):
-    response = await skill.handle(query=effective_query)
-  else:
-    response = skill.handle(query=effective_query)
+  if skill.auth_provider and not await skill.auth_provider.is_connected():
+    logger.info(f"[router] {skill.auth_provider.display_name} not connected — starting auth flow")
+    connect_result = await skill.auth_provider.connect()
+    # Auto-retry the skill if auth succeeded
+    if await skill.auth_provider.is_connected():
+      retry_response = await _dispatch(skill, effective_query, query)
+      return f"{connect_result}\n\n{retry_response}"
+    return connect_result
 
-  if not skill.needs_wrapping:
-    return response
-
-  return await handle_conversation(query, response)
+  return await _dispatch(skill, effective_query, query)

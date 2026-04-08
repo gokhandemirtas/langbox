@@ -6,4 +6,5 @@ newsfeed_skill = Skill(
     description="Latest news headlines and current events from BBC RSS",
     system_prompt=None,
     handle=handle_newsfeed,
+    needs_wrapping=False,
 )

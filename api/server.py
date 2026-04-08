@@ -42,11 +42,31 @@ async def handle_voice(request: web.Request) -> web.Response:
         while chunk := await field.read_chunk(8192):
             tmp.write(chunk)
 
+    # Pre-convert to WAV with elevated probe settings so Whisper's ffmpeg can
+    # handle Android m4a files that report "Audio: none, unknown codec".
+    import subprocess
+    wav_in = audio_in.replace(".m4a", ".wav")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-nostdin",
+                "-analyzeduration", "10M", "-probesize", "10M",
+                "-i", audio_in,
+                "-ac", "1", "-acodec", "pcm_s16le", "-ar", "16000",
+                wav_in,
+            ],
+            check=True,
+            capture_output=True,
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"[api/voice] ffmpeg pre-convert failed: {e.stderr.decode()}")
+        return web.json_response({"error": "audio conversion failed"}, status=422)
+
     try:
         # STT via Whisper
         import whisper
         model = whisper.load_model("base")
-        result = model.transcribe(audio_in)
+        result = model.transcribe(wav_in)
         transcript = result["text"].strip()
         logger.debug(f"[api/voice] transcript='{transcript}'")
 
@@ -67,7 +87,7 @@ async def handle_voice(request: web.Request) -> web.Response:
         return web.json_response({"text": response_text, "audio": audio_b64})
 
     finally:
-        for path in (audio_in, audio_out if "audio_out" in dir() else None):
+        for path in (audio_in, wav_in, audio_out if "audio_out" in dir() else None):
             if path and os.path.exists(path):
                 os.remove(path)
 

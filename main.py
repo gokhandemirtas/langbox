@@ -62,7 +62,7 @@ async def main(debug: bool = False, emote: bool = False):
     from skills.camera_tracking.skill import start_tracking
     start_tracking()
 
-  if "--server-up" in sys.argv:
+  if "--server" in sys.argv:
     await start_api_server()
 
   
