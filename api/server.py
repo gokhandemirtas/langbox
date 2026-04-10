@@ -1,22 +1,34 @@
 """Langbox HTTP API — serves the mobile app over Tailscale.
 
 Endpoints:
-  POST /query      — text query through the intent classifier
-  POST /voice      — audio file → Whisper STT → intent classifier → pocket-tts → base64 audio
-  GET  /notes      — list all notes from MongoDB
-  GET  /reminders  — list reminders from MongoDB
-  GET  /openapi.json — OpenAPI 3.0 spec (generated from skills registry)
-  GET  /docs       — Swagger UI
+  POST /query          — text query through the intent classifier
+  POST /voice          — audio file → enqueues processing, returns job_id immediately
+  GET  /voice/{job_id} — poll for voice job result (pending | done | error)
+  GET  /plans          — list saved planner plans
+  GET  /notes          — list all notes from MongoDB
+  GET  /reminders      — list reminders from MongoDB
+  GET  /openapi.json   — OpenAPI 3.0 spec (generated from skills registry)
+  GET  /docs           — Swagger UI
 """
 
+import asyncio
 import base64
 import json
 import os
 import tempfile
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 from aiohttp import web
 
 from utils.log import logger
+
+# ---------------------------------------------------------------------------
+# Voice job queue
+# ---------------------------------------------------------------------------
+
+_voice_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="voice")
+_voice_jobs: dict[str, dict] = {}  # job_id → {status, result}
 
 
 async def handle_query(request: web.Request) -> web.Response:
@@ -25,9 +37,77 @@ async def handle_query(request: web.Request) -> web.Response:
     if not query:
         return web.json_response({"error": "query is required"}, status=400)
 
+    if query.startswith("/planner"):
+        task = query[len("/planner"):].strip()
+        if not task:
+            return web.json_response({"error": "task is required. Usage: /planner <task>"}, status=400)
+        from skills.planner import run_planner
+        response = await run_planner(task)
+        return web.json_response({"response": response})
+
     from agents.intent_classifier import run_intent_classifier
     response = await run_intent_classifier(query)
     return web.json_response({"response": response})
+
+
+def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLoop) -> None:
+    """Blocking pipeline: ffmpeg → Whisper → intent classifier → TTS. Runs in thread pool."""
+    import subprocess
+    import whisper
+    from tts.tts import synthesise
+
+    wav_in = audio_in.replace(".m4a", ".wav")
+    audio_out = None
+    try:
+        # ffmpeg pre-convert
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-nostdin",
+                    "-analyzeduration", "10M", "-probesize", "10M",
+                    "-i", audio_in,
+                    "-ac", "1", "-acodec", "pcm_s16le", "-ar", "16000",
+                    wav_in,
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"[api/voice] ffmpeg failed: {e.stderr.decode()}")
+            _voice_jobs[job_id] = {"status": "error", "error": "audio conversion failed"}
+            return
+
+        # Whisper STT
+        model = whisper.load_model("base")
+        transcript = model.transcribe(wav_in)["text"].strip()
+        logger.debug(f"[api/voice] transcript='{transcript}'")
+
+        # Intent classifier (async — run via the event loop from this thread)
+        from agents.intent_classifier import run_intent_classifier
+        future = asyncio.run_coroutine_threadsafe(run_intent_classifier(transcript), loop)
+        response_text = future.result()
+
+        # TTS
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+            audio_out = tmp_out.name
+        synthesise(response_text, audio_out)
+
+        with open(audio_out, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode()
+
+        _voice_jobs[job_id] = {
+            "status": "done",
+            "transcription": transcript,
+            "text": response_text,
+            "audio": audio_b64,
+        }
+    except Exception as e:
+        logger.error(f"[api/voice] job {job_id} failed: {e}")
+        _voice_jobs[job_id] = {"status": "error", "error": str(e)}
+    finally:
+        for path in (audio_in, wav_in, audio_out):
+            if path and os.path.exists(path):
+                os.remove(path)
 
 
 async def handle_voice(request: web.Request) -> web.Response:
@@ -36,60 +116,49 @@ async def handle_voice(request: web.Request) -> web.Response:
     if field is None or field.name != "audio":
         return web.json_response({"error": "audio field is required"}, status=400)
 
-    # Save uploaded audio to a temp file
     with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as tmp:
         audio_in = tmp.name
         while chunk := await field.read_chunk(8192):
             tmp.write(chunk)
 
-    # Pre-convert to WAV with elevated probe settings so Whisper's ffmpeg can
-    # handle Android m4a files that report "Audio: none, unknown codec".
-    import subprocess
-    wav_in = audio_in.replace(".m4a", ".wav")
-    try:
-        subprocess.run(
-            [
-                "ffmpeg", "-y", "-nostdin",
-                "-analyzeduration", "10M", "-probesize", "10M",
-                "-i", audio_in,
-                "-ac", "1", "-acodec", "pcm_s16le", "-ar", "16000",
-                wav_in,
-            ],
-            check=True,
-            capture_output=True,
-        )
-    except subprocess.CalledProcessError as e:
-        logger.error(f"[api/voice] ffmpeg pre-convert failed: {e.stderr.decode()}")
-        return web.json_response({"error": "audio conversion failed"}, status=422)
+    job_id = str(uuid.uuid4())
+    _voice_jobs[job_id] = {"status": "pending"}
 
-    try:
-        # STT via Whisper
-        import whisper
-        model = whisper.load_model("base")
-        result = model.transcribe(wav_in)
-        transcript = result["text"].strip()
-        logger.debug(f"[api/voice] transcript='{transcript}'")
+    loop = asyncio.get_event_loop()
+    loop.run_in_executor(_voice_executor, _process_voice_job, job_id, audio_in, loop)
 
-        # Run through intent classifier
-        from agents.intent_classifier import run_intent_classifier
-        response_text = await run_intent_classifier(transcript)
+    return web.json_response({"job_id": job_id}, status=202)
 
-        # TTS via pocket-tts
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
-            audio_out = tmp_out.name
 
-        from tts.tts import synthesise
-        synthesise(response_text, audio_out)
+async def handle_voice_result(request: web.Request) -> web.Response:
+    job_id = request.match_info["job_id"]
+    job = _voice_jobs.get(job_id)
+    if job is None:
+        return web.json_response({"error": "job not found"}, status=404)
+    if job["status"] == "error":
+        _voice_jobs.pop(job_id)
+        return web.json_response({"error": job["error"]}, status=422)
+    if job["status"] == "pending":
+        return web.json_response({"status": "pending"}, status=202)
+    # done — return result and clean up
+    _voice_jobs.pop(job_id)
+    return web.json_response(job)
 
-        with open(audio_out, "rb") as f:
-            audio_b64 = base64.b64encode(f.read()).decode()
 
-        return web.json_response({"text": response_text, "audio": audio_b64})
-
-    finally:
-        for path in (audio_in, wav_in, audio_out if "audio_out" in dir() else None):
-            if path and os.path.exists(path):
-                os.remove(path)
+async def handle_plans(request: web.Request) -> web.Response:
+    from db.schemas import Plans
+    plans = await Plans.find().sort(-Plans.created_at).to_list()
+    return web.json_response({
+        "plans": [
+            {
+                "id": str(p.id),
+                "ask": p.ask,
+                "plan": p.plan,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in plans
+        ]
+    })
 
 
 async def handle_notes(request: web.Request) -> web.Response:
@@ -171,7 +240,8 @@ _CORS_HEADERS = {
 @web.middleware
 async def log_middleware(request: web.Request, handler):
     response = await handler(request)
-    logger.info(f"{request.method} {request.path} → {response.status}")
+    if request.path != "/health":
+        logger.info(f"{request.method} {request.path} → {response.status}")
     return response
 
 
@@ -189,6 +259,8 @@ def create_app() -> web.Application:
     app.router.add_get("/health", handle_health)
     app.router.add_post("/query", handle_query)
     app.router.add_post("/voice", handle_voice)
+    app.router.add_get("/voice/{job_id}", handle_voice_result)
+    app.router.add_get("/plans", handle_plans)
     app.router.add_get("/notes", handle_notes)
     app.router.add_get("/reminders", handle_reminders)
     app.router.add_get("/openapi.json", handle_openapi)
