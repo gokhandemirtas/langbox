@@ -114,6 +114,7 @@ async def handle_voice(request: web.Request) -> web.Response:
     reader = await request.multipart()
     field = await reader.next()
     if field is None or field.name != "audio":
+        logger.warning("[api/voice] missing audio field in multipart request")
         return web.json_response({"error": "audio field is required"}, status=400)
 
     with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as tmp:
@@ -121,26 +122,38 @@ async def handle_voice(request: web.Request) -> web.Response:
         while chunk := await field.read_chunk(8192):
             tmp.write(chunk)
 
+    file_size = os.path.getsize(audio_in)
     job_id = str(uuid.uuid4())
+    logger.info(f"[api/voice] job {job_id} queued — file size {file_size} bytes")
     _voice_jobs[job_id] = {"status": "pending"}
 
     loop = asyncio.get_event_loop()
-    loop.run_in_executor(_voice_executor, _process_voice_job, job_id, audio_in, loop)
+    await loop.run_in_executor(_voice_executor, _process_voice_job, job_id, audio_in, loop)
 
-    return web.json_response({"job_id": job_id}, status=202)
+    job = _voice_jobs.pop(job_id, None)
+    if job is None or job.get("status") == "error":
+        error = job.get("error", "processing failed") if job else "job lost"
+        logger.error(f"[api/voice] job {job_id} failed: {error}")
+        return web.json_response({"error": error}, status=422)
+
+    return web.json_response(job)
 
 
 async def handle_voice_result(request: web.Request) -> web.Response:
     job_id = request.match_info["job_id"]
     job = _voice_jobs.get(job_id)
     if job is None:
+        logger.warning(f"[api/voice] job {job_id} not found")
         return web.json_response({"error": "job not found"}, status=404)
     if job["status"] == "error":
+        logger.error(f"[api/voice] job {job_id} failed: {job['error']}")
         _voice_jobs.pop(job_id)
         return web.json_response({"error": job["error"]}, status=422)
     if job["status"] == "pending":
+        logger.debug(f"[api/voice] job {job_id} still pending")
         return web.json_response({"status": "pending"}, status=202)
     # done — return result and clean up
+    logger.info(job)
     _voice_jobs.pop(job_id)
     return web.json_response(job)
 

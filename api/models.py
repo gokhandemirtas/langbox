@@ -20,7 +20,8 @@ class QueryResponse(BaseModel):
 # --- /voice ---
 
 class VoiceResponse(BaseModel):
-    text: str = Field(..., description="Full response text (transcribed query + skill response)")
+    transcription: str = Field(..., description="Whisper transcription of the user's audio input")
+    text: str = Field(..., description="Natural language response from the matched skill")
     audio: str = Field(..., description="Base64-encoded WAV audio of the spoken response")
 
 
