@@ -2,6 +2,7 @@ import asyncio
 import os
 import re
 from collections import deque
+from collections.abc import Callable
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
@@ -146,22 +147,35 @@ def _get_llm(temperature: float = 0.7, max_tokens: int = 1024):
   )
 
 
-async def handle_conversation(user_query: str, handler_response: str) -> str:
+async def handle_conversation(
+  user_query: str,
+  handler_response: str,
+  on_token: Callable[[str], None] | None = None,
+) -> str:
   """Wrap a skill's raw output into natural language — stateless, no session memory.
 
-  The final response is stored in the shared history so CHAT follow-ups
-  (e.g. "which one is warmer?") can reference it.
-
-  Args:
-      user_query: The original user question
-      handler_response: Raw output from a skill handler
-
-  Returns:
-      Natural language response derived solely from handler_response
+  When on_token is provided (voice WebSocket path), streams tokens via ChatLlamaCpp
+  instead of waiting for the full structured output. Topic update is skipped in this
+  mode since the response is free-form text.
   """
   global _current_topic
 
   system_prompt = _DATA_PROMPT_TEMPLATE.format(handler_response=handler_response)
+
+  if on_token is not None:
+    llm = _get_llm(temperature=0.7, max_tokens=768)
+    messages = [SystemMessage(content=system_prompt), HumanMessage(content=user_query)]
+    full_text = ""
+    async for chunk in llm.astream(messages):
+      token = chunk.content
+      if token:
+        full_text += token
+        on_token(token)
+    final = _strip_think(full_text)
+    _history.append(HumanMessage(content=user_query))
+    _history.append(AIMessage(content=final))
+    return final
+
   result = await asyncio.to_thread(
     generate_structured_output,
     model_name=os.environ["MODEL_GENERALIST"],
@@ -204,11 +218,43 @@ async def _fetch_past_context() -> str:
   return f"## Summary of your last conversation\n{summary}"
 
 
-async def handle_chat(query: str) -> str:
-  """CHAT intent — responds with full conversation history for follow-up awareness."""
+async def handle_chat(query: str, on_token: Callable[[str], None] | None = None) -> str:
+  """CHAT intent — responds with full conversation history for follow-up awareness.
+
+  When on_token is provided (voice WebSocket path), streams tokens via ChatLlamaCpp.
+  """
   global _current_topic
 
   from skills.conversation.reasoning_engine import reason_and_act, should_use_reasoning
+
+  # Streaming path for voice WebSocket — bypass structured output and reasoning engine
+  if on_token is not None:
+    if len(_history) >= MAX_HISTORY - 2:
+      await _compress_oldest()
+    system = _chat_prompt()
+    persona = get_persona_context()
+    if persona:
+      system = system + "\n\n" + persona
+    if _rolling_summary:
+      system = system + "\n\n## Summary of earlier in this conversation:\n" + _rolling_summary
+    history_lines = []
+    for msg in list(_history):
+      role = "User" if isinstance(msg, HumanMessage) else AGENT_NAME
+      history_lines.append(f"{role}: {msg.content}")
+    user_prompt = ("## Conversation so far:\n" + "\n".join(history_lines) + f"\n\nUser: {query}"
+                   if history_lines else query)
+    llm = _get_llm(temperature=0.7, max_tokens=1024)
+    messages = [SystemMessage(content=system), HumanMessage(content=user_prompt)]
+    full_text = ""
+    async for chunk in llm.astream(messages):
+      token = chunk.content
+      if token:
+        full_text += token
+        on_token(token)
+    final = _strip_think(full_text)
+    _history.append(HumanMessage(content=query))
+    _history.append(AIMessage(content=final))
+    return final
 
   # Check if query needs multi-step reasoning
   recent_history = get_recent_history(n=4)

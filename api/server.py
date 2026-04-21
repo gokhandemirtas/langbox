@@ -175,6 +175,7 @@ def _process_voice_ws(
     voice_id: str,
     cancel_event: threading.Event,
     send_event,
+    on_token,
 ) -> None:
     """ffmpeg → Whisper → LLM → TTS pipeline for the WebSocket path.
 
@@ -220,7 +221,10 @@ def _process_voice_ws(
             return
 
         from agents.intent_classifier import run_intent_classifier
-        future = asyncio.run_coroutine_threadsafe(run_intent_classifier(transcript), loop)
+        future = asyncio.run_coroutine_threadsafe(
+            run_intent_classifier(transcript, on_token=on_token),
+            loop,
+        )
         response_text = future.result()
 
         if cancel_event.is_set():
@@ -282,7 +286,11 @@ async def handle_voice_ws(request: web.Request) -> web.WebSocketResponse:
     def send_event(event: dict) -> None:
         loop.call_soon_threadsafe(queue.put_nowait, event)
 
-    loop.run_in_executor(_voice_executor, _process_voice_ws, audio_in, loop, voice_id, cancel_event, send_event)
+    def on_token(token: str) -> None:
+        # Called from within the event loop (inside run_intent_classifier coroutine)
+        queue.put_nowait({"stage": "text_chunk", "text": token})
+
+    loop.run_in_executor(_voice_executor, _process_voice_ws, audio_in, loop, voice_id, cancel_event, send_event, on_token)
 
     async def pump_events() -> None:
         while True:

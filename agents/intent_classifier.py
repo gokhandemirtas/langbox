@@ -197,7 +197,7 @@ def _build_classifier_prompt(user_query: str) -> str:
   return "\n".join(lines)
 
 
-async def run_intent_classifier(user_query: str) -> str:
+async def run_intent_classifier(user_query: str, on_token=None) -> str:
   """Run the intent classifier agent and return the response."""
 
   start_time = time.time()
@@ -218,7 +218,7 @@ async def run_intent_classifier(user_query: str) -> str:
     )
   logger.debug(f"Classified intent: {result.intent}")
 
-  handler_response = await route_intent(intent=result.intent, query=user_query)
+  handler_response = await route_intent(intent=result.intent, query=user_query, on_token=on_token)
 
   # Append to today's journal
   from skills.journal import append_to_journal
