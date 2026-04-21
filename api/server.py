@@ -2,8 +2,11 @@
 
 Endpoints:
   POST /query          — text query through the intent classifier
-  POST /voice          — audio file → enqueues processing, returns job_id immediately
+  GET  /tts/voices     — list available TTS voice IDs and the default
+  WS   /voice/ws       — WebSocket voice round-trip (audio in → transcribed + done events out)
+  POST /voice          — audio file → synthesised response (optional ?voice_id=)
   GET  /voice/{job_id} — poll for voice job result (pending | done | error)
+  DEL  /voice/{job_id} — cancel an in-flight voice job
   GET  /plans          — list saved planner plans
   GET  /notes          — list all notes from MongoDB
   GET  /reminders      — list reminders from MongoDB
@@ -16,6 +19,9 @@ import base64
 import json
 import os
 import tempfile
+import threading
+
+from aiohttp import WSMsgType
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
@@ -50,15 +56,20 @@ async def handle_query(request: web.Request) -> web.Response:
     return web.json_response({"response": response})
 
 
-def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLoop) -> None:
+def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLoop, voice_id: str | None = None) -> None:
     """Blocking pipeline: ffmpeg → Whisper → intent classifier → TTS. Runs in thread pool."""
     import subprocess
     import whisper
-    from tts.tts import synthesise
+    from tts.tts import active_voice_id, synthesise
 
+    cancel_event: threading.Event = _voice_jobs[job_id]["cancel_event"]
     wav_in = audio_in.replace(".m4a", ".wav")
     audio_out = None
     try:
+        if cancel_event.is_set():
+            _voice_jobs[job_id].update({"status": "cancelled"})
+            return
+
         # ffmpeg pre-convert
         try:
             subprocess.run(
@@ -74,36 +85,54 @@ def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLo
             )
         except subprocess.CalledProcessError as e:
             logger.error(f"[api/voice] ffmpeg failed: {e.stderr.decode()}")
-            _voice_jobs[job_id] = {"status": "error", "error": "audio conversion failed"}
+            _voice_jobs[job_id].update({"status": "error", "error": "audio conversion failed"})
+            return
+
+        if cancel_event.is_set():
+            _voice_jobs[job_id].update({"status": "cancelled"})
             return
 
         # Whisper STT
         model = whisper.load_model("base")
         transcript = model.transcribe(wav_in)["text"].strip()
         logger.debug(f"[api/voice] transcript='{transcript}'")
+        _voice_jobs[job_id]["transcription"] = transcript
+
+        if cancel_event.is_set():
+            _voice_jobs[job_id].update({"status": "cancelled"})
+            return
 
         # Intent classifier (async — run via the event loop from this thread)
         from agents.intent_classifier import run_intent_classifier
         future = asyncio.run_coroutine_threadsafe(run_intent_classifier(transcript), loop)
         response_text = future.result()
+        _voice_jobs[job_id]["text"] = response_text
 
-        # TTS
+        if cancel_event.is_set():
+            _voice_jobs[job_id].update({"status": "cancelled"})
+            return
+
+        # TTS — cancel_event wires directly into the chunk loop
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
             audio_out = tmp_out.name
-        synthesise(response_text, audio_out)
+        synthesise(response_text, audio_out, voice_id=voice_id or active_voice_id, cancel_event=cancel_event)
+
+        if cancel_event.is_set():
+            _voice_jobs[job_id].update({"status": "cancelled"})
+            return
 
         with open(audio_out, "rb") as f:
             audio_b64 = base64.b64encode(f.read()).decode()
 
-        _voice_jobs[job_id] = {
+        _voice_jobs[job_id].update({
             "status": "done",
             "transcription": transcript,
             "text": response_text,
             "audio": audio_b64,
-        }
+        })
     except Exception as e:
         logger.error(f"[api/voice] job {job_id} failed: {e}")
-        _voice_jobs[job_id] = {"status": "error", "error": str(e)}
+        _voice_jobs[job_id].update({"status": "error", "error": str(e)})
     finally:
         for path in (audio_in, wav_in, audio_out):
             if path and os.path.exists(path):
@@ -111,6 +140,12 @@ def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLo
 
 
 async def handle_voice(request: web.Request) -> web.Response:
+    from tts.tts import active_voice_id, voice_ids
+
+    voice_id = request.rel_url.query.get("voice_id", active_voice_id)
+    if voice_id not in voice_ids:
+        return web.json_response({"error": f"unknown voice_id '{voice_id}'. Available: {voice_ids}"}, status=400)
+
     reader = await request.multipart()
     field = await reader.next()
     if field is None or field.name != "audio":
@@ -124,19 +159,171 @@ async def handle_voice(request: web.Request) -> web.Response:
 
     file_size = os.path.getsize(audio_in)
     job_id = str(uuid.uuid4())
-    logger.info(f"[api/voice] job {job_id} queued — file size {file_size} bytes")
-    _voice_jobs[job_id] = {"status": "pending"}
+    cancel_event = threading.Event()
+    logger.info(f"[api/voice] job {job_id} queued — file size {file_size} bytes, voice={voice_id}")
+    _voice_jobs[job_id] = {"status": "pending", "cancel_event": cancel_event}
 
     loop = asyncio.get_event_loop()
-    await loop.run_in_executor(_voice_executor, _process_voice_job, job_id, audio_in, loop)
+    loop.run_in_executor(_voice_executor, _process_voice_job, job_id, audio_in, loop, voice_id)
 
-    job = _voice_jobs.pop(job_id, None)
-    if job is None or job.get("status") == "error":
-        error = job.get("error", "processing failed") if job else "job lost"
-        logger.error(f"[api/voice] job {job_id} failed: {error}")
-        return web.json_response({"error": error}, status=422)
+    return web.json_response({"job_id": job_id, "status": "pending"}, status=202)
 
-    return web.json_response(job)
+
+def _process_voice_ws(
+    audio_in: str,
+    loop: asyncio.AbstractEventLoop,
+    voice_id: str,
+    cancel_event: threading.Event,
+    send_event,
+) -> None:
+    """ffmpeg → Whisper → LLM → TTS pipeline for the WebSocket path.
+
+    Pushes JSON events via send_event as each stage completes.
+    Checks cancel_event between stages; synthesise() checks it inside the TTS loop.
+    """
+    import subprocess
+    import whisper
+    from tts.tts import synthesise
+
+    wav_in = audio_in.replace(".m4a", ".wav")
+    audio_out = None
+    try:
+        if cancel_event.is_set():
+            return
+
+        try:
+            subprocess.run(
+                [
+                    "ffmpeg", "-y", "-nostdin",
+                    "-analyzeduration", "10M", "-probesize", "10M",
+                    "-i", audio_in,
+                    "-ac", "1", "-acodec", "pcm_s16le", "-ar", "16000",
+                    wav_in,
+                ],
+                check=True,
+                capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            logger.error(f"[api/voice/ws] ffmpeg failed: {e.stderr.decode()}")
+            send_event({"stage": "error", "error": "audio conversion failed"})
+            return
+
+        if cancel_event.is_set():
+            return
+
+        model = whisper.load_model("base")
+        transcript = model.transcribe(wav_in)["text"].strip()
+        logger.debug(f"[api/voice/ws] transcript='{transcript}'")
+        send_event({"stage": "transcribed", "text": transcript})
+
+        if cancel_event.is_set():
+            return
+
+        from agents.intent_classifier import run_intent_classifier
+        future = asyncio.run_coroutine_threadsafe(run_intent_classifier(transcript), loop)
+        response_text = future.result()
+
+        if cancel_event.is_set():
+            return
+
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_out:
+            audio_out = tmp_out.name
+        synthesise(response_text, audio_out, voice_id=voice_id, cancel_event=cancel_event)
+
+        if cancel_event.is_set():
+            return
+
+        with open(audio_out, "rb") as f:
+            audio_b64 = base64.b64encode(f.read()).decode()
+
+        send_event({"stage": "done", "text": response_text, "audio": audio_b64})
+
+    except Exception as e:
+        logger.error(f"[api/voice/ws] pipeline failed: {e}")
+        send_event({"stage": "error", "error": str(e)})
+    finally:
+        for path in (audio_in, wav_in, audio_out):
+            if path and os.path.exists(path):
+                os.remove(path)
+
+
+async def handle_voice_ws(request: web.Request) -> web.WebSocketResponse:
+    from tts.tts import active_voice_id, voice_ids
+
+    voice_id = request.rel_url.query.get("voice_id", active_voice_id)
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    if voice_id not in voice_ids:
+        await ws.send_json({"stage": "error", "error": f"unknown voice_id '{voice_id}'. Available: {voice_ids}"})
+        await ws.close()
+        return ws
+
+    # Expect a single binary audio frame within 10 seconds
+    try:
+        msg = await asyncio.wait_for(ws.receive(), timeout=10.0)
+    except asyncio.TimeoutError:
+        await ws.close(code=1001, message=b"no audio received within 10s")
+        return ws
+
+    if msg.type != WSMsgType.BINARY:
+        await ws.send_json({"stage": "error", "error": "expected binary audio frame"})
+        await ws.close()
+        return ws
+
+    with tempfile.NamedTemporaryFile(suffix=".m4a", delete=False) as tmp:
+        audio_in = tmp.name
+        tmp.write(msg.data)
+
+    cancel_event = threading.Event()
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def send_event(event: dict) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, event)
+
+    loop.run_in_executor(_voice_executor, _process_voice_ws, audio_in, loop, voice_id, cancel_event, send_event)
+
+    async def pump_events() -> None:
+        while True:
+            event = await queue.get()
+            if not ws.closed:
+                await ws.send_json(event)
+            if event.get("stage") in ("done", "error"):
+                return
+
+    async def watch_disconnect() -> None:
+        async for ws_msg in ws:
+            if ws_msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR, WSMsgType.CLOSED):
+                break
+        cancel_event.set()
+
+    pump_task = asyncio.create_task(pump_events())
+    watch_task = asyncio.create_task(watch_disconnect())
+    _, pending = await asyncio.wait([pump_task, watch_task], return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+    if not ws.closed:
+        await ws.close()
+
+    return ws
+
+
+async def handle_voice_cancel(request: web.Request) -> web.Response:
+    job_id = request.match_info["job_id"]
+    job = _voice_jobs.get(job_id)
+    if job is None:
+        return web.json_response({"error": "job not found"}, status=404)
+    if job["status"] in ("done", "cancelled", "error"):
+        return web.json_response({"error": f"job already {job['status']}"}, status=409)
+    job["cancel_event"].set()
+    logger.info(f"[api/voice] job {job_id} cancel requested")
+    return web.json_response({"job_id": job_id, "status": "cancelling"})
 
 
 async def handle_voice_result(request: web.Request) -> web.Response:
@@ -145,17 +332,23 @@ async def handle_voice_result(request: web.Request) -> web.Response:
     if job is None:
         logger.warning(f"[api/voice] job {job_id} not found")
         return web.json_response({"error": "job not found"}, status=404)
-    if job["status"] == "error":
+    status = job["status"]
+    if status == "pending":
+        logger.debug(f"[api/voice] job {job_id} still pending")
+        return web.json_response({"status": "pending"}, status=202)
+    if status == "cancelled":
+        result = {k: v for k, v in job.items() if k not in ("cancel_event",)}
+        _voice_jobs.pop(job_id)
+        return web.json_response(result, status=200)
+    if status == "error":
         logger.error(f"[api/voice] job {job_id} failed: {job['error']}")
         _voice_jobs.pop(job_id)
         return web.json_response({"error": job["error"]}, status=422)
-    if job["status"] == "pending":
-        logger.debug(f"[api/voice] job {job_id} still pending")
-        return web.json_response({"status": "pending"}, status=202)
-    # done — return result and clean up
-    logger.info(job)
+    # done — strip internal fields before returning
+    result = {k: v for k, v in job.items() if k != "cancel_event"}
+    logger.info(f"[api/voice] job {job_id} done")
     _voice_jobs.pop(job_id)
-    return web.json_response(job)
+    return web.json_response(result)
 
 
 async def handle_plans(request: web.Request) -> web.Response:
@@ -211,6 +404,11 @@ async def handle_reminders(request: web.Request) -> web.Response:
     })
 
 
+async def handle_tts_voices(request: web.Request) -> web.Response:
+    from tts.tts import active_voice_id, voice_ids
+    return web.json_response({"voices": voice_ids, "default": active_voice_id})
+
+
 async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
@@ -245,7 +443,7 @@ async def handle_docs(request: web.Request) -> web.Response:
 
 _CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
 }
 
@@ -271,8 +469,11 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[log_middleware, cors_middleware])
     app.router.add_get("/health", handle_health)
     app.router.add_post("/query", handle_query)
+    app.router.add_get("/tts/voices", handle_tts_voices)
+    app.router.add_get("/voice/ws", handle_voice_ws)
     app.router.add_post("/voice", handle_voice)
     app.router.add_get("/voice/{job_id}", handle_voice_result)
+    app.router.add_delete("/voice/{job_id}", handle_voice_cancel)
     app.router.add_get("/plans", handle_plans)
     app.router.add_get("/notes", handle_notes)
     app.router.add_get("/reminders", handle_reminders)

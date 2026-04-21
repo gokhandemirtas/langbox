@@ -23,7 +23,8 @@
       "Bash(uv --version)",
       "Read(//home/gokhan/.claude/**)",
       "Read(//home/gokhan/.config/claude/**)",
-      "mcp__langbox-api__query"
+      "mcp__langbox-api__query",
+      "Bash(python *)"
     ],
     "deny": [],
     "ask": []

@@ -17,6 +17,13 @@ class QueryResponse(BaseModel):
     response: str = Field(..., description="Natural language response from the matched skill")
 
 
+# --- /tts/voices ---
+
+class VoicesResponse(BaseModel):
+    voices: list[str] = Field(..., description="Available TTS voice IDs")
+    default: str = Field(..., description="Default voice ID used when none is specified")
+
+
 # --- /voice ---
 
 class VoiceResponse(BaseModel):

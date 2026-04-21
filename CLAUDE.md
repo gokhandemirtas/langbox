@@ -102,7 +102,7 @@ Skills with `needs_wrapping=True` return raw data strings — `handle_conversati
 | `HOME_CONTROL` | `skills/home_control/` | `skill.py`, `hue_client.py` (Philips Hue) |
 | `REMINDER` | `skills/reminder/` | `skill.py`, `create.py`, `list.py`, `timer.py`, `parser.py` |
 | `NEWSFEED` | `skills/newsfeed/` | `skill.py` (RSS feeds) |
-| `SEARCH` | `skills/search/` | `skill.py` (DuckDuckGo via `ddgs`) |
+| `SEARCH` | `skills/search/` | `skill.py` (DuckDuckGo + Tavily, BM25-ranked top 3) |
 | `TRANSPORTATION` | `skills/transportation/` | `skill.py`, `ors_client.py`, `prompts.py` (OpenRouteService) |
 | `INFORMATION_QUERY` | `skills/information/` | `skill.py`, `prompts.py` (Wikipedia) |
 | `CHAT` | `skills/conversation/` | `skill.py` — also handles post-processing for all other skills |
@@ -131,6 +131,36 @@ ReAct loop rules:
 - If the query asks the assistant to clarify something it already said → `RESPOND` from context
 - After 2+ observations, strongly prefer `RESPOND` rather than looping further
 - Max steps: 5 (safety cap)
+
+### Search Skill (`skills/search/`, `utils/search.py`)
+
+Runs DuckDuckGo and Tavily in parallel (5 results each = up to 10 total), then ranks all results by BM25 relevance to the query and returns the top 3. Uses `rank_bm25.BM25Okapi` with simple regex tokenisation. The ranked results are passed as raw data to `handle_conversation()` for natural language wrapping.
+
+Debug log lines prefixed `[1]`, `[2]`, `[3]` show which results were selected — useful for diagnosing poor answers.
+
+### HTTP API (`api/server.py`)
+
+Serves the mobile app over Tailscale on port 8000.
+
+**Async voice job pattern** — `POST /voice` returns immediately; the client polls for the result:
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/voice` | Submit audio (multipart `audio` field, optional `?voice_id=`). Returns `{job_id, status: "pending"}` (202). |
+| `GET` | `/voice/{job_id}` | Poll for result. Returns `{status}` or full result when done. |
+| `DELETE` | `/voice/{job_id}` | Cancel in-flight job. Sets the cancel event; TTS stops at the next chunk boundary. |
+| `POST` | `/query` | Text query through intent classifier. Synchronous. |
+| `GET` | `/tts/voices` | List available voice IDs. |
+| `GET` | `/plans` | List saved planner plans. |
+| `GET` | `/notes` | List notes. |
+| `GET` | `/reminders` | List reminders. |
+
+**Voice job lifecycle:**
+- `transcription` and `text` are stored into the job dict eagerly as each pipeline stage completes (Whisper → LLM). This means a cancelled job still returns the text response even if audio was never finished.
+- Cancellation is checked at every stage boundary: pre-ffmpeg, post-ffmpeg, post-Whisper, post-LLM, and inside the TTS chunk loop.
+- Completed response shape: `{status, transcription, text, audio}` (done) or `{status, transcription?, text?}` (cancelled).
+
+**`synthesise()` cancel event ownership rule:** `tts/tts.py` only calls `cancel_event.set()` in its `finally` block when it created the event itself (`owned=True`). When a `cancel_event` is passed in from outside (API usage), the caller owns it — `synthesise()` must not set it on completion or it would cause the job to be marked cancelled even on success.
 
 ### Background Services (not in SKILL_MAP)
 

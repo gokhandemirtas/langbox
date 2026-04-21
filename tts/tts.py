@@ -39,14 +39,18 @@ def _escape_listener(stop_event: threading.Event) -> None:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
 
 
-def synthesise(text: str, output_path: str, voice_id: str = active_voice_id) -> str:
+def synthesise(text: str, output_path: str, voice_id: str = active_voice_id, cancel_event: threading.Event | None = None) -> str:
     if not text:
         raise ValueError("No text provided for TTS")
 
     logger.debug(f"Synthesizing {text}")
-    stop_event = threading.Event()
-    listener = threading.Thread(target=_escape_listener, args=(stop_event,), daemon=True)
-    listener.start()
+    owned = cancel_event is None
+    if owned:
+        cancel_event = threading.Event()
+        listener = threading.Thread(target=_escape_listener, args=(cancel_event,), daemon=True)
+        listener.start()
+    else:
+        listener = None
 
     tts_model = TTSModel.load_model(temp=0.5, lsd_decode_steps=7, eos_threshold=-1.0)
     voice_state = tts_model.get_state_for_audio_prompt(voice_id)
@@ -56,12 +60,14 @@ def synthesise(text: str, output_path: str, voice_id: str = active_voice_id) -> 
     try:
         with Live(Spinner("dots", text=Text("Synthesising audio…", style="dim")), console=_console, transient=True):
             for chunk in chunks:
-                if stop_event.is_set():
+                if cancel_event.is_set():
                     break
                 all_audio.append(chunk.numpy())
     finally:
-        stop_event.set()
-        listener.join(timeout=0.5)
+        if owned:
+            cancel_event.set()
+        if listener:
+            listener.join(timeout=0.5)
 
     if not all_audio:
         return output_path

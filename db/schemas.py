@@ -86,6 +86,10 @@ class Note(Document):
     name = "Notes"
 
 
+class VoiceSettings(Document):
+  active_voice_id: str = "azelma"
+
+
 class UserPersona(Document):
   last_updated: datetime
   exchanges_analyzed: int = 0

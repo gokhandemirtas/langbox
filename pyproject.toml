@@ -43,6 +43,7 @@ dependencies = [
     "openai-whisper>=20250625",
     "nvidia-ml-py>=13.590.48",
     "tavily-python>=0.7.23",
+    "rank-bm25>=0.2.2",
     "llama-cpp-python>=0.3.17",
     "rich>=14.3.3",
 ]
