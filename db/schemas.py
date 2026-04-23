@@ -64,16 +64,22 @@ class Plans(Document):
   plan: str
 
 
-class JournalEntry(BaseModel):
+class ConversationExchange(BaseModel):
   timestamp: datetime
   question: str
   answer: str
 
 
-class Journal(Document):
+class Conversations(Document):
   date: date
-  entries: list[JournalEntry] = []
-  summary: Optional[str] = None  # LLM-generated summary, written at next session start
+  exchanges: list[ConversationExchange] = []
+  compacted: Optional[str] = None
+  compact_status: Literal["idle", "pending", "complete", "error"] = "idle"
+
+
+class Journal(Document):
+  datestamp: date
+  summary: str
 
 
 class Note(Document):

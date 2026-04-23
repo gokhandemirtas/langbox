@@ -1,17 +1,24 @@
 """Langbox HTTP API — serves the mobile app over Tailscale.
 
 Endpoints:
-  POST /query          — text query through the intent classifier
-  GET  /tts/voices     — list available TTS voice IDs and the default
-  WS   /voice/ws       — WebSocket voice round-trip (audio in → transcribed + done events out)
-  POST /voice          — audio file → synthesised response (optional ?voice_id=)
-  GET  /voice/{job_id} — poll for voice job result (pending | done | error)
-  DEL  /voice/{job_id} — cancel an in-flight voice job
-  GET  /plans          — list saved planner plans
-  GET  /notes          — list all notes from MongoDB
-  GET  /reminders      — list reminders from MongoDB
-  GET  /openapi.json   — OpenAPI 3.0 spec (generated from skills registry)
-  GET  /docs           — Swagger UI
+  POST /query              — text query through the intent classifier
+  GET  /tts/voices         — list available TTS voice IDs and the default
+  GET  /personas           — list available persona IDs
+  GET  /persona            — get the active persona
+  POST /persona            — set the active persona (body: {"persona": "<id>"})
+  WS   /voice/ws           — WebSocket voice round-trip (audio in → transcribed + done events out)
+  POST /voice              — audio file → synthesised response (optional ?voice_id=)
+  GET  /voice/{job_id}     — poll for voice job result (pending | done | error)
+  DEL  /voice/{job_id}     — cancel an in-flight voice job
+  WS   /compact            — compact a day's conversations, then auto-writes journal; pushes pending → complete/error (?date=YYYY-MM-DD)
+  GET  /conversations      — list all dates that have conversation records (newest first)
+  GET  /conversation/{date} — exchanges + compact state for a specific date (YYYY-MM-DD)
+  GET  /journal            — list journal entries (?date= or ?limit=)
+  GET  /plans              — list saved planner plans
+  GET  /notes              — list all notes from MongoDB
+  GET  /reminders          — list reminders from MongoDB
+  GET  /openapi.json       — OpenAPI 3.0 spec (generated from skills registry)
+  GET  /docs               — Swagger UI
 """
 
 import asyncio
@@ -141,8 +148,9 @@ def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLo
 
 async def handle_voice(request: web.Request) -> web.Response:
     from tts.tts import active_voice_id, voice_ids
+    from agents.persona import get_active_voice_id
 
-    voice_id = request.rel_url.query.get("voice_id", active_voice_id)
+    voice_id = request.rel_url.query.get("voice_id") or get_active_voice_id() or active_voice_id
     if voice_id not in voice_ids:
         return web.json_response({"error": f"unknown voice_id '{voice_id}'. Available: {voice_ids}"}, status=400)
 
@@ -253,8 +261,9 @@ def _process_voice_ws(
 
 async def handle_voice_ws(request: web.Request) -> web.WebSocketResponse:
     from tts.tts import active_voice_id, voice_ids
+    from agents.persona import get_active_voice_id
 
-    voice_id = request.rel_url.query.get("voice_id", active_voice_id)
+    voice_id = request.rel_url.query.get("voice_id") or get_active_voice_id() or active_voice_id
     ws = web.WebSocketResponse()
     await ws.prepare(request)
 
@@ -359,6 +368,121 @@ async def handle_voice_result(request: web.Request) -> web.Response:
     return web.json_response(result)
 
 
+async def handle_compact_ws(request: web.Request) -> web.WebSocketResponse:
+    from datetime import date
+    from db.schemas import Conversations
+    from skills.journal.compact import compact_conversations
+
+    date_str = request.rel_url.query.get("date")
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    try:
+        for_date = date.fromisoformat(date_str) if date_str else date.today()
+    except ValueError:
+        await ws.send_json({"status": "error", "error": "invalid date format, use YYYY-MM-DD"})
+        await ws.close()
+        return ws
+
+    doc = await Conversations.find_one(Conversations.date == for_date)
+    if doc is None:
+        await ws.send_json({"status": "error", "error": f"no conversations found for {for_date}"})
+        await ws.close()
+        return ws
+    if not doc.exchanges:
+        await ws.send_json({"status": "error", "error": "no exchanges to compact"})
+        await ws.close()
+        return ws
+    if doc.compact_status == "pending":
+        await ws.send_json({"status": "error", "error": "compact already in progress"})
+        await ws.close()
+        return ws
+
+    doc.compact_status = "pending"
+    await doc.save()
+    await ws.send_json({"status": "pending", "date": for_date.isoformat()})
+
+    try:
+        summary = await compact_conversations(for_date)
+        if not ws.closed:
+            await ws.send_json({"status": "complete", "date": for_date.isoformat(), "compacted": summary})
+        from skills.journal.journal_writer import write_journal_entry
+        asyncio.create_task(write_journal_entry(for_date))
+    except Exception as e:
+        if not ws.closed:
+            await ws.send_json({"status": "error", "error": str(e)})
+    finally:
+        if not ws.closed:
+            await ws.close()
+
+    return ws
+
+
+
+async def handle_conversations(request: web.Request) -> web.Response:
+    from db.schemas import Conversations
+
+    docs = await Conversations.find().sort(-Conversations.date).to_list()
+    return web.json_response({
+        "dates": [doc.date.isoformat() for doc in docs]
+    })
+
+
+async def handle_conversation_detail(request: web.Request) -> web.Response:
+    from datetime import date
+    from db.schemas import Conversations
+
+    date_str = request.match_info["date"]
+    try:
+        for_date = date.fromisoformat(date_str)
+    except ValueError:
+        return web.json_response({"error": "invalid date format, use YYYY-MM-DD"}, status=400)
+
+    doc = await Conversations.find_one(Conversations.date == for_date)
+    if doc is None:
+        return web.json_response({
+            "date": for_date.isoformat(),
+            "exchanges": [],
+        })
+
+    exchanges = sorted(doc.exchanges, key=lambda ex: ex.timestamp)
+    return web.json_response({
+        "date": for_date.isoformat(),
+        "exchanges": [
+            {
+                "timestamp": ex.timestamp.isoformat(),
+                "question": ex.question,
+                "answer": ex.answer,
+            }
+            for ex in exchanges
+        ],
+    })
+
+
+async def handle_journal_list(request: web.Request) -> web.Response:
+    from datetime import date
+    from db.schemas import Journal
+
+    date_str = request.rel_url.query.get("date")
+    if date_str:
+        try:
+            for_date = date.fromisoformat(date_str)
+        except ValueError:
+            return web.json_response({"error": "invalid date format, use YYYY-MM-DD"}, status=400)
+        entry = await Journal.find_one(Journal.datestamp == for_date)
+        entries = [entry] if entry else []
+    else:
+        limit = int(request.rel_url.query.get("limit", "10"))
+        entries = await Journal.find().sort(-Journal.datestamp).limit(limit).to_list()
+
+    return web.json_response({
+        "entries": [
+            {"datestamp": e.datestamp.isoformat(), "summary": e.summary}
+            for e in entries
+        ]
+    })
+
+
 async def handle_plans(request: web.Request) -> web.Response:
     from db.schemas import Plans
     plans = await Plans.find().sort(-Plans.created_at).to_list()
@@ -415,6 +539,51 @@ async def handle_reminders(request: web.Request) -> web.Response:
 async def handle_tts_voices(request: web.Request) -> web.Response:
     from tts.tts import active_voice_id, voice_ids
     return web.json_response({"voices": voice_ids, "default": active_voice_id})
+
+
+async def handle_personas(request: web.Request) -> web.Response:
+    from agents.persona import PERSONAS
+    from tts.tts import active_voice_id
+    return web.json_response({
+        "personas": [
+            {"id": pid, "name": p["name"], "voice_id": p["voice_id"] or active_voice_id}
+            for pid, p in PERSONAS.items()
+        ]
+    })
+
+
+async def handle_get_persona(request: web.Request) -> web.Response:
+    from agents.persona import PERSONAS, get_active_persona_id
+    from tts.tts import active_voice_id
+    persona_id = get_active_persona_id()
+    persona = PERSONAS[persona_id]
+    return web.json_response({
+        "persona": persona_id,
+        "name": persona["name"],
+        "voice_id": persona["voice_id"] or active_voice_id,
+    })
+
+
+async def handle_set_persona(request: web.Request) -> web.Response:
+    from agents.persona import PERSONAS, set_active_persona
+    from tts.tts import active_voice_id
+    data = await request.json()
+    persona_id = data.get("persona", "").strip()
+    if not persona_id:
+        return web.json_response({"error": "persona is required"}, status=400)
+    if persona_id not in PERSONAS:
+        return web.json_response(
+            {"error": f"unknown persona '{persona_id}'. Available: {list(PERSONAS.keys())}"},
+            status=400,
+        )
+    set_active_persona(persona_id)
+    persona = PERSONAS[persona_id]
+    logger.info(f"[api/persona] active persona set to '{persona_id}'")
+    return web.json_response({
+        "persona": persona_id,
+        "name": persona["name"],
+        "voice_id": persona["voice_id"] or active_voice_id,
+    })
 
 
 async def handle_health(request: web.Request) -> web.Response:
@@ -478,10 +647,17 @@ def create_app() -> web.Application:
     app.router.add_get("/health", handle_health)
     app.router.add_post("/query", handle_query)
     app.router.add_get("/tts/voices", handle_tts_voices)
+    app.router.add_get("/personas", handle_personas)
+    app.router.add_get("/persona", handle_get_persona)
+    app.router.add_post("/persona", handle_set_persona)
     app.router.add_get("/voice/ws", handle_voice_ws)
     app.router.add_post("/voice", handle_voice)
     app.router.add_get("/voice/{job_id}", handle_voice_result)
     app.router.add_delete("/voice/{job_id}", handle_voice_cancel)
+    app.router.add_get("/compact", handle_compact_ws)
+    app.router.add_get("/conversations", handle_conversations)
+    app.router.add_get("/conversation/{date}", handle_conversation_detail)
+    app.router.add_get("/journal", handle_journal_list)
     app.router.add_get("/plans", handle_plans)
     app.router.add_get("/notes", handle_notes)
     app.router.add_get("/reminders", handle_reminders)

@@ -145,7 +145,7 @@ async def count_documents(collection: str, filter: dict[str, Any] | None = None)
 
 @mcp.tool()
 async def get_recent_journal_entries(limit: int = 5) -> str:
-  """Get the most recent journal entries (one per day).
+  """Get the most recent journal entries (AIDA's first-person narratives, one per day).
 
   Args:
       limit: Maximum number of journal days to return (default: 5)
@@ -156,7 +156,7 @@ async def get_recent_journal_entries(limit: int = 5) -> str:
   await init_db()
 
   try:
-    cursor = db.journal.find().sort("date", -1).limit(limit)
+    cursor = db.journal.find().sort("datestamp", -1).limit(limit)
     entries = []
     async for doc in cursor:
       entries.append(serialize_doc(doc))
@@ -164,11 +164,10 @@ async def get_recent_journal_entries(limit: int = 5) -> str:
     if not entries:
       return "No journal entries found in database"
 
-    result = f"Found {len(entries)} journal day(s):\n\n"
+    result = f"Found {len(entries)} journal entry/entries:\n\n"
     for entry in entries:
-      result += f"Date: {entry.get('date', 'N/A')}\n"
-      result += f"Summary: {entry.get('summary') or '(not yet summarised)'}\n"
-      result += f"Exchanges: {len(entry.get('entries', []))}\n\n"
+      result += f"Date: {entry.get('datestamp', 'N/A')}\n"
+      result += f"Summary: {entry.get('summary', '(empty)')}\n\n"
 
     return result
   except Exception as e:
@@ -177,49 +176,62 @@ async def get_recent_journal_entries(limit: int = 5) -> str:
 
 @mcp.tool()
 async def search_journal(search_text: str, limit: int = 10) -> str:
-  """Search journal entries by text in questions or answers.
+  """Search conversation exchanges and journal summaries for matching text.
+
+  Searches both the raw Q&A exchanges in the conversations collection and
+  AIDA's journal summaries.
 
   Args:
       search_text: Text to search for
       limit: Maximum number of results to return (default: 10)
 
   Returns:
-      A formatted string with matching exchanges
+      A formatted string with matching results
   """
   await init_db()
 
   try:
-    filter_query = {
+    results = []
+
+    # Search raw exchanges in conversations collection
+    conv_filter = {
       "$or": [
-        {"entries.question": {"$regex": search_text, "$options": "i"}},
-        {"entries.answer": {"$regex": search_text, "$options": "i"}},
-        {"summary": {"$regex": search_text, "$options": "i"}},
+        {"exchanges.question": {"$regex": search_text, "$options": "i"}},
+        {"exchanges.answer": {"$regex": search_text, "$options": "i"}},
+        {"compacted": {"$regex": search_text, "$options": "i"}},
       ]
     }
+    conv_cursor = db.conversations.find(conv_filter).sort("date", -1).limit(limit)
+    async for doc in conv_cursor:
+      results.append(("conversation", serialize_doc(doc)))
 
-    cursor = db.journal.find(filter_query).sort("date", -1).limit(limit)
-    results = []
-    async for doc in cursor:
-      results.append(serialize_doc(doc))
+    # Search journal summaries
+    journal_filter = {"summary": {"$regex": search_text, "$options": "i"}}
+    journal_cursor = db.journal.find(journal_filter).sort("datestamp", -1).limit(limit)
+    async for doc in journal_cursor:
+      results.append(("journal", serialize_doc(doc)))
 
     if not results:
-      return f"No journal entries found matching '{search_text}'"
+      return f"No results found matching '{search_text}'"
 
-    result = f"Found {len(results)} journal day(s) matching '{search_text}':\n\n"
-    for entry in results:
-      result += f"Date: {entry.get('date', 'N/A')}\n"
-      result += f"Summary: {entry.get('summary') or '(not yet summarised)'}\n"
-      for i, ex in enumerate(entry.get("entries", []), 1):
-        q = ex.get("question", "")
-        a = ex.get("answer", "")
-        if search_text.lower() in q.lower() or search_text.lower() in a.lower():
-          result += f"  [{ex.get('timestamp', '')}] Q: {q[:120]}\n"
-          result += f"  [{ex.get('timestamp', '')}] A: {a[:160]}\n"
-      result += "\n"
+    output = f"Found {len(results)} result(s) matching '{search_text}':\n\n"
+    for source, entry in results:
+      if source == "conversation":
+        output += f"[Conversation] Date: {entry.get('date', 'N/A')}\n"
+        for ex in entry.get("exchanges", []):
+          q = ex.get("question", "")
+          a = ex.get("answer", "")
+          if search_text.lower() in q.lower() or search_text.lower() in a.lower():
+            output += f"  [{ex.get('timestamp', '')}] Q: {q[:120]}\n"
+            output += f"  [{ex.get('timestamp', '')}] A: {a[:160]}\n"
+      else:
+        output += f"[Journal] Date: {entry.get('datestamp', 'N/A')}\n"
+        output += f"  {entry.get('summary', '')[:200]}\n"
+      output += "\n"
 
-    return result
+    return output
   except Exception as e:
-    return f"Error searching journal: {str(e)}"
+    return f"Error searching: {str(e)}"
 
 
 def main():

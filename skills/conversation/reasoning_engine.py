@@ -15,7 +15,7 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from agents.persona import AGENT_IDENTITY, AGENT_NAME
+from agents.persona import get_active_identity, get_active_name
 from utils.llm_structured_output import generate_structured_output
 from utils.log import logger
 
@@ -172,7 +172,9 @@ async def reason_and_act(user_query: str, conversation_context: str, persona: st
   return "I couldn't complete the reasoning process within the allowed steps."
 
 
-_SYNTHESIZE_PROMPT = f"""{AGENT_IDENTITY} You have just researched a topic on behalf of the user.
+def _synthesize_prompt() -> str:
+    name = get_active_name()
+    return f"""{get_active_identity()} You have just researched a topic on behalf of the user.
 
 Using the research findings below, write a direct, conversational response that:
 - Acknowledges the user's point or opinion if they expressed one
@@ -180,13 +182,13 @@ Using the research findings below, write a direct, conversational response that:
 - Keeps it concise (2-4 sentences). No bullet points, no headers, plain prose only
 - Never dump raw search results — synthesise and interpret them
 - Check if the user intends to continue the conversation based on what was discussed earlier
-- Always use first person when referring to yourself — "I said", "I mentioned" — never "the assistant" or "{AGENT_NAME} said\""""
+- Always use first person when referring to yourself — "I said", "I mentioned" — never "the assistant" or "{name} said\""""
 
 
 async def _synthesize(user_query: str, observations: list[str], persona: str | None = None) -> str:
   from agents.agent_factory import create_llm
 
-  system = _SYNTHESIZE_PROMPT
+  system = _synthesize_prompt()
   if persona:
     system += f"\n\n{persona}"
 

@@ -1,11 +1,8 @@
-"""Incremental persona builder — extracts user facts from each conversation exchange
-and accumulates them into a UserPersona document in MongoDB.
+"""Persona builder — extracts user facts from a day's conversation log before compaction.
 
-Runs as a background task after each exchange. Uses a fast regex pre-filter to skip
-messages with no personal signals, then confirms with an LLM check before extracting.
-
-Never re-analyses full history — only looks at the latest exchange and merges
-new findings into the existing record.
+Runs as part of the compaction flow, on the raw exchanges, before they are summarised.
+Uses a fast regex pre-filter to skip the LLM entirely when no personal signals are present.
+Merges new findings into the existing UserPersona document in MongoDB.
 
 The persona is injected into AIDA's CHAT system prompt so she can address the user
 naturally. Private notes are stored in DB only and never surfaced to the user.
@@ -53,27 +50,27 @@ class PersonaUpdate(BaseModel):
 
 
 
-_CHECK_PROMPT = """Does the user's message reveal anything personal about themselves?
+_CHECK_PROMPT = """Do any of the user's messages in this conversation log reveal anything personal about them?
 Personal means: their name, birthday, gender, religion, political views, job, location, something they like or dislike, a hobby, interest, personality trait, or opinion about themselves.
 Asking about weather, stocks, news, or directions is NOT personal. Saying "I don't like cold weather" IS personal (it's a dislike).
-Return true if the user revealed something personal, false otherwise."""
+Return true if the user revealed something personal anywhere in the log, false otherwise."""
 
-_EXTRACT_PROMPT = """You are a silent observer analysing a single exchange between a user and their AI assistant.
+_EXTRACT_PROMPT = """You are a silent observer analysing a day's conversation log between a user and their AI assistant.
 
 IMPORTANT: The assistant may be wrong, hallucinating, or making things up. Never extract a fact because the assistant stated it. Only extract facts the user themselves expressed.
 
 Rules:
-- Only extract what is directly stated or very strongly implied by the USER. Do not guess wildly.
-- date_of_birth: ONLY set if the USER explicitly states their own birthday or birth year in their own words. Output exactly as the user said it (e.g. "5th March 1990", "March 5th", "1990-03-05"). Do not reformat. If the assistant mentioned a date but the user did not confirm it, leave this "unknown".
+- Only extract what is directly stated or very strongly implied by USER messages. Do not guess wildly.
+- date_of_birth: ONLY set if the USER explicitly states their own birthday or birth year. Output exactly as the user said it (e.g. "5th March 1990", "March 5th", "1990-03-05"). Do not reformat.
 - name: only set if the user refers to themselves by name or confirms a name they were addressed by.
 - gender: "male" or "female" only if the user explicitly states it. Use "unknown" otherwise.
 - location: city or country only if mentioned. Do not infer from topics discussed.
 - Big Five dimensions (openness, conscientiousness, extraversion, agreeableness, neuroticism):
-  Set to "low", "medium", or "high" only when there is a clear signal in this exchange. Use "unknown" if unsure.
+  Set to "low", "medium", or "high" only when there is a clear signal. Use "unknown" if unsure.
   Examples: organising/planning → high conscientiousness; seeking new experiences → high openness;
   expressing worry/anxiety → high neuroticism; preferring solo activities → low extraversion.
 - communication_style: infer from how the user writes ("formal", "casual", "technical", "mixed").
-- likes / dislikes: return only NEW items found in this exchange. Empty list if nothing new.
+- likes / dislikes: return only items found in this log. Empty list if nothing found.
 - Use "unknown" for string fields where you found nothing.
 
 Return a JSON object matching the schema exactly."""
@@ -221,13 +218,13 @@ _PERSONAL_SIGNAL = re.compile(
 # Extraction
 # ---------------------------------------------------------------------------
 
-def _check_personal_sync(question: str) -> bool:
+def _check_personal_sync(log: str) -> bool:
     import os
     from utils.llm_structured_output import generate_structured_output
 
     result = generate_structured_output(
         model_name=os.environ["MODEL_GENERALIST"],
-        user_prompt=question,
+        user_prompt=log,
         system_prompt=_CHECK_PROMPT,
         pydantic_model=PersonalContentCheck,
         max_tokens=100,
@@ -235,14 +232,13 @@ def _check_personal_sync(question: str) -> bool:
     return result.isPersonal
 
 
-def _extract_sync(question: str, answer: str) -> PersonaUpdate:
+def _extract_sync(log: str) -> PersonaUpdate:
     import os
     from utils.llm_structured_output import generate_structured_output
 
-    exchange = f"[USER MESSAGE — extract facts from this]\n{question}\n\n[ASSISTANT RESPONSE — context only, do not extract facts from this]\n{answer}"
     return generate_structured_output(
         model_name=os.environ["MODEL_GENERALIST"],
-        user_prompt=exchange,
+        user_prompt=log,
         system_prompt=_EXTRACT_PROMPT,
         pydantic_model=PersonaUpdate,
         max_tokens=512,
@@ -250,15 +246,27 @@ def _extract_sync(question: str, answer: str) -> PersonaUpdate:
 
 
 # ---------------------------------------------------------------------------
-# Public entry point — called as background task after each exchange
+# Public entry point — called before compaction so raw exchanges are not lost
 # ---------------------------------------------------------------------------
 
-async def update_persona_from_exchange(question: str, answer: str) -> None:
+async def analyze_persona_from_log(exchanges: list) -> None:
+    """Extract user facts from a day's raw exchanges and merge into UserPersona.
+
+    Called by compact_conversations before summarisation so no personal details
+    are lost when the raw exchanges are replaced by the compact summary.
+    """
     global _cached_persona_context
 
-    # Fast regex pre-filter — skip LLM entirely if no personal signals
-    if not _PERSONAL_SIGNAL.search(question):
+    # Fast regex pre-filter on all user messages — skip LLM if nothing personal
+    all_user_text = " ".join(ex.question for ex in exchanges)
+    if not _PERSONAL_SIGNAL.search(all_user_text):
         return
+
+    lines = []
+    for ex in exchanges:
+        lines.append(f"User: {ex.question}")
+        lines.append(f"Assistant: {ex.answer}")
+    log = "\n".join(lines)
 
     try:
         from db.schemas import UserPersona
@@ -266,18 +274,18 @@ async def update_persona_from_exchange(question: str, answer: str) -> None:
         loop = asyncio.get_running_loop()
 
         logger.debug("[personalizer] Personal signal detected, running extraction")
-        is_personal = await loop.run_in_executor(None, lambda: _check_personal_sync(question))
+        is_personal = await loop.run_in_executor(None, lambda: _check_personal_sync(log))
         if not is_personal:
             return
 
-        update = await loop.run_in_executor(None, lambda: _extract_sync(question, answer))
+        update = await loop.run_in_executor(None, lambda: _extract_sync(log))
 
         existing = await UserPersona.find_one()
         if existing is None:
             existing = await UserPersona(last_updated=datetime.now()).insert()
 
         changes = _build_changes(existing, update)
-        new_count = existing.exchanges_analyzed + 1
+        new_count = existing.exchanges_analyzed + len(exchanges)
         changes["exchanges_analyzed"] = new_count
         changes["confidence"] = min(1.0, new_count / 50)
         changes["last_updated"] = datetime.now()
@@ -288,7 +296,7 @@ async def update_persona_from_exchange(question: str, answer: str) -> None:
         if len(changes) > 3:  # more than just the bookkeeping fields
             updated = await UserPersona.find_one()
             _cached_persona_context = _build_persona_context(updated)
-            logger.debug(f"[personalizer] Persona updated (confidence={changes['confidence']:.2f})")
+            logger.debug(f"[personalizer] Persona updated from {len(exchanges)} exchanges (confidence={changes['confidence']:.2f})")
 
     except Exception as e:
         logger.error(f"[personalizer] Update failed: {e}")

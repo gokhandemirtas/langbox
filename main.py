@@ -54,10 +54,6 @@ async def main(debug: bool = False, emote: bool = False):
     enable_tts()
     logger.debug("TTS enabled")
 
-  if "--journal" in sys.argv:
-    from skills.journal import summarize_pending_journal
-    await summarize_pending_journal()
-
   if "--track_camera" in sys.argv:
     from skills.camera_tracking.skill import start_tracking
     start_tracking()

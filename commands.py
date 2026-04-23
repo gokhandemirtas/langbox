@@ -11,7 +11,7 @@ Available commands:
 
 from utils.log import logger
 
-from agents.persona import AGENT_IDENTITY, AGENT_NAME
+from agents.persona import get_active_identity
 from skills.conversation.skill import _history
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,7 @@ async def cmd_save() -> None:
 
     llm = _get_llm()
     summary_prompt = (
-        f"{AGENT_IDENTITY} Summarise the following conversation between you and the user. "
+        f"{get_active_identity()} Summarise the following conversation between you and the user. "
         "Write in first person — 'I told the user...', 'the user asked me...'. "
         "Capture the key topics discussed and any conclusions or answers given. Be concise."
     )

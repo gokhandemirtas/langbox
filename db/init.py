@@ -6,6 +6,7 @@ from utils.log import logger
 from pymongo import AsyncMongoClient
 
 from db.schemas import (
+  Conversations,
   Credentials,
   HueConfiguration,
   Journal,
@@ -18,7 +19,7 @@ from db.schemas import (
   Weather,
 )
 
-collections = [Credentials, HueConfiguration, Journal, Newsfeed, Note, Plans, Reminders, ServiceCredentials, UserPersona, Weather]
+collections = [Conversations, Credentials, HueConfiguration, Journal, Newsfeed, Note, Plans, Reminders, ServiceCredentials, UserPersona, Weather]
 
 
 async def db_init() -> str | None:
