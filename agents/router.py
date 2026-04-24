@@ -27,7 +27,7 @@ def _enrich_query(query: str, intent: str) -> str:
   return query
 
 
-async def _dispatch(skill, effective_query: str, original_query: str, on_token=None) -> str:
+async def _dispatch(skill, effective_query: str, original_query: str, on_token=None, on_status=None) -> str:
   """Call skill.handle and apply needs_wrapping."""
   # CHAT with streaming: skip the normal handle() call and go straight to handle_chat
   if not skill.needs_wrapping and on_token is not None and skill.id == "CHAT":
@@ -53,7 +53,7 @@ def _build_planner_task(query: str) -> str:
   return query
 
 
-async def route_intent(intent: str, query: str, on_token=None) -> str:
+async def route_intent(intent: str, query: str, on_token=None, on_status=None) -> str:
   """Route a classified intent to its matching skill."""
   normalized = intent.strip().upper()
 
@@ -73,8 +73,8 @@ async def route_intent(intent: str, query: str, on_token=None) -> str:
     logger.info(f"[router] {skill.auth_provider.display_name} not connected — starting auth flow")
     connect_result = await skill.auth_provider.connect()
     if await skill.auth_provider.is_connected():
-      retry_response = await _dispatch(skill, effective_query, query, on_token=on_token)
+      retry_response = await _dispatch(skill, effective_query, query, on_token=on_token, on_status=on_status)
       return f"{connect_result}\n\n{retry_response}"
     return connect_result
 
-  return await _dispatch(skill, effective_query, query, on_token=on_token)
+  return await _dispatch(skill, effective_query, query, on_token=on_token, on_status=on_status)

@@ -111,7 +111,7 @@ async def _call_skill(tool: str, query: str) -> str:
 
 async def _synthesize(task: str, steps: list[tuple[str, str, str]]) -> str:
     data = "\n\n".join(f"[{tool} — {query}]\n{result}" for tool, query, result in steps)
-    llm = create_llm(temperature=0.5, max_tokens=3072)
+    llm = create_llm(temperature=0.5).bind(max_tokens=3072)
     response = await llm.ainvoke([
         SystemMessage(content=_SYNTHESIZE_PROMPT),
         HumanMessage(content=f"Task: {task}\n\nResearch:\n{data}"),

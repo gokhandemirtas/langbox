@@ -1,7 +1,8 @@
 """Langbox HTTP API — serves the mobile app over Tailscale.
 
 Endpoints:
-  POST /query              — text query through the intent classifier
+  POST /query              — text query through the intent classifier (synchronous)
+  WS   /query/ws           — text query with streaming status + token events
   GET  /tts/voices         — list available TTS voice IDs and the default
   GET  /personas           — list available persona IDs
   GET  /persona            — get the active persona
@@ -61,6 +62,107 @@ async def handle_query(request: web.Request) -> web.Response:
     from agents.intent_classifier import run_intent_classifier
     response = await run_intent_classifier(query)
     return web.json_response({"response": response})
+
+
+async def handle_query_ws(request: web.Request) -> web.WebSocketResponse:
+    """WebSocket text query endpoint.
+
+    Client sends: {"query": "..."}
+    Server pushes:
+      {"stage": "status",     "message": "Checking weather"}   — intent resolved
+      {"stage": "text_chunk", "text":    "..."}                 — streaming token
+      {"stage": "done",       "text":    "..."}                 — final answer
+      {"stage": "error",      "error":   "..."}                 — failure
+    """
+    ws = web.WebSocketResponse()
+    await ws.prepare(request)
+
+    try:
+        msg = await asyncio.wait_for(ws.receive(), timeout=10.0)
+    except asyncio.TimeoutError:
+        await ws.close(code=1001, message=b"no query received within 10s")
+        return ws
+
+    if msg.type != WSMsgType.TEXT:
+        await ws.send_json({"stage": "error", "error": "expected JSON text frame"})
+        await ws.close()
+        return ws
+
+    try:
+        data = json.loads(msg.data)
+        query = data.get("query", "").strip()
+    except (json.JSONDecodeError, AttributeError):
+        await ws.send_json({"stage": "error", "error": "invalid JSON"})
+        await ws.close()
+        return ws
+
+    if not query:
+        await ws.send_json({"stage": "error", "error": "query is required"})
+        await ws.close()
+        return ws
+
+    loop = asyncio.get_event_loop()
+    queue: asyncio.Queue = asyncio.Queue()
+
+    def on_status(message: str) -> None:
+        loop.call_soon_threadsafe(queue.put_nowait, {"stage": "status", "message": message})
+
+    def on_token(token: str) -> None:
+        queue.put_nowait({"stage": "text_chunk", "text": token})
+
+    async def run_query() -> None:
+        try:
+            from agents.intent_classifier import run_intent_classifier
+            if query.startswith("/planner"):
+                task = query[len("/planner"):].strip()
+                if not task:
+                    queue.put_nowait({"stage": "error", "error": "task is required"})
+                    return
+                if on_status:
+                    on_status("Building your plan")
+                from skills.planner import run_planner
+                response = await run_planner(task)
+            else:
+                response = await run_intent_classifier(query, on_token=on_token, on_status=on_status)
+            queue.put_nowait({"stage": "done", "text": response})
+        except Exception as e:
+            logger.error(f"[api/query/ws] pipeline failed: {e}")
+            queue.put_nowait({"stage": "error", "error": str(e)})
+
+    async def pump_events() -> None:
+        while True:
+            event = await queue.get()
+            if not ws.closed:
+                await ws.send_json(event)
+            if event.get("stage") in ("done", "error"):
+                return
+
+    async def watch_disconnect() -> None:
+        async for ws_msg in ws:
+            if ws_msg.type in (WSMsgType.CLOSE, WSMsgType.ERROR, WSMsgType.CLOSED):
+                break
+
+    query_task = asyncio.create_task(run_query())
+    pump_task = asyncio.create_task(pump_events())
+    watch_task = asyncio.create_task(watch_disconnect())
+
+    _, pending = await asyncio.wait([pump_task, watch_task], return_when=asyncio.FIRST_COMPLETED)
+    for task in pending:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+    query_task.cancel()
+    try:
+        await query_task
+    except asyncio.CancelledError:
+        pass
+
+    if not ws.closed:
+        await ws.close()
+
+    return ws
 
 
 def _process_voice_job(job_id: str, audio_in: str, loop: asyncio.AbstractEventLoop, voice_id: str | None = None) -> None:
@@ -646,6 +748,7 @@ def create_app() -> web.Application:
     app = web.Application(middlewares=[log_middleware, cors_middleware])
     app.router.add_get("/health", handle_health)
     app.router.add_post("/query", handle_query)
+    app.router.add_get("/query/ws", handle_query_ws)
     app.router.add_get("/tts/voices", handle_tts_voices)
     app.router.add_get("/personas", handle_personas)
     app.router.add_get("/persona", handle_get_persona)

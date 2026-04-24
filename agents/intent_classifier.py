@@ -216,7 +216,23 @@ def _build_classifier_prompt(user_query: str) -> str:
   return "\n".join(lines)
 
 
-async def run_intent_classifier(user_query: str, on_token=None) -> str:
+_INTENT_STATUS: dict[str, str] = {
+  "HOME_CONTROL": "Controlling smart home",
+  "WEATHER": "Checking weather",
+  "FINANCE_STOCKS": "Fetching stock data",
+  "TRANSPORTATION": "Getting directions",
+  "REMINDER": "Checking reminders",
+  "NEWSFEED": "Loading news feed",
+  "INFORMATION_QUERY": "Looking up information",
+  "NOTES": "Accessing notes",
+  "SEARCH": "Searching the web",
+  "SPOTIFY": "Controlling Spotify",
+  "PLANNER": "Building your plan",
+  "CHAT": "Thinking",
+}
+
+
+async def run_intent_classifier(user_query: str, on_token=None, on_status=None) -> str:
   """Run the intent classifier agent and return the response."""
 
   start_time = time.time()
@@ -237,7 +253,10 @@ async def run_intent_classifier(user_query: str, on_token=None) -> str:
     )
   logger.debug(f"Classified intent: {result.intent}")
 
-  handler_response = await route_intent(intent=result.intent, query=user_query, on_token=on_token)
+  if on_status:
+    on_status(_INTENT_STATUS.get(result.intent, "Processing"))
+
+  handler_response = await route_intent(intent=result.intent, query=user_query, on_token=on_token, on_status=on_status)
 
   # Append to today's journal
   from skills.journal import append_to_journal

@@ -116,7 +116,23 @@ PERSONAS: dict[str, dict] = {
     },
 }
 
-_active_persona_id: str = "default"
+import os
+
+_PERSONA_STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".persona_state")
+
+
+def _load_persisted_persona() -> str:
+    try:
+        with open(_PERSONA_STATE_FILE) as f:
+            pid = f.read().strip()
+            if pid in PERSONAS:
+                return pid
+    except FileNotFoundError:
+        pass
+    return "default"
+
+
+_active_persona_id: str = _load_persisted_persona()
 
 
 def get_active_persona_id() -> str:
@@ -128,6 +144,8 @@ def set_active_persona(persona_id: str) -> None:
     if persona_id not in PERSONAS:
         raise ValueError(f"Unknown persona '{persona_id}'. Available: {list(PERSONAS)}")
     _active_persona_id = persona_id
+    with open(_PERSONA_STATE_FILE, "w") as f:
+        f.write(persona_id)
 
 
 def get_active_name() -> str:

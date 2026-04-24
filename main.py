@@ -81,11 +81,15 @@ async def main(debug: bool = False, emote: bool = False):
     gpu_offload = llama_supports_gpu_offload()
   boot_time = time.time() - start_time
 
+  from agents.persona import get_active_persona_id, get_active_voice_id, get_active_name
+
   table = Table(show_header=True, box=box.HEAVY, show_lines=True, padding=(0, 2))
   table.add_column("Action", style="bold cyan")
   table.add_column("Result")
   table.add_row("Model", os.environ.get("MODEL_GENERALIST", "unknown"))
   table.add_row("GPU", f"{gpu_name} ({gpu_vram:,} MiB), [green]GPU offload[/green]" if gpu_offload else "[red]CPU only[/red]")
+  table.add_row("Persona", f"{get_active_name()} ({get_active_persona_id()})")
+  table.add_row("Voice", get_active_voice_id() or "[dim]default[/dim]")
   table.add_row("Debug", "on" if debug else "off")
   table.add_row("Personalizer", personalizer_log)
   table.add_row("Database", db_init_log)
