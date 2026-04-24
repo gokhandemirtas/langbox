@@ -96,8 +96,16 @@ Control Spotify music playback.
 - "play Radiohead", "pause Spotify", "skip this song", "what's playing", "turn the volume up to 80", "add this to queue"
 - **Keywords:** play, pause, skip, next track, previous track, volume, now playing, queue, Spotify
 
-### 11. CHAT
-General conversation, greetings, feedback, follow-up comparisons, reactions, personal statements/preferences, nonsensical input, and anything that doesn't clearly fit another category.
+### 11. PLANNER
+Multi-step planning requests that require research and synthesis into a structured plan or itinerary. Triggered when the user explicitly asks the assistant to *create*, *plan*, or *come up with* something that involves gathering information across multiple steps.
+- "plan a 2 week itinerary for Japan", "come up with a travel plan for me", "create a study plan for learning Spanish"
+- "plan my trip to Tokyo", "can you put together an itinerary", "I need a plan for my Japan trip"
+- "come up with a 2 week schedule", "build me a Japan travel itinerary", "design a workout plan"
+- Only applies when the subject of the plan is clear from the query OR the current conversation topic. If there is no clear subject and no conversation context, classify as CHAT instead.
+- **Keywords:** plan, itinerary, schedule, put together, come up with a plan, create a plan, build a plan, design a plan, map out
+
+### 12. CHAT
+General conversation, greetings, feedback, follow-up comparisons, reactions, personal statements/preferences, nonsensical input, creative/generative requests directed at the assistant, and anything that doesn't clearly fit another category.
 - "hello", "good morning", "how are you", "who are you", "thanks for the help", "you were wrong about that"
 - Short reactions when history is present: "interesting", "cool", "wow", "really?", "fascinating", "makes sense", "go on"
 - Personal statements and preferences when history is present: "I don't like cold", "I prefer X", "that's too expensive", "I hate rain"
@@ -105,7 +113,8 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 - References to numbered items in a previous answer: "explain number 5", "tell me more about the third one", "what about item 2?"
 - Nonsensical or out-of-domain input: "banana elephant purple", "I am ozymandias"
 - Requests for physical actions the assistant cannot perform: "fry an egg", "make me coffee", "drive me somewhere", "cook dinner", "open the door", "pour me a drink"
-- **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, I don't like, I prefer, I hate, which one, number, item, the first, the second, the third
+- **Creative/generative requests** asking the assistant to produce content: "come up with a 2 week itinerary", "write me a poem", "create a meal plan", "suggest some ideas", "can you make a list of", "I was hoping you could come up with", "give me a plan for", "draft a schedule"
+- **Keywords:** hello, hi, hey, how are you, who are you, thank you, I disagree, I don't like, I prefer, I hate, which one, number, item, the first, the second, the third, come up with, write me, make me a list, give me a plan, create a, draft a, suggest some
 
 ## Classification Rules
 
@@ -123,6 +132,8 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 10. Follow-up questions that compare, elaborate, or reference a previous answer → CHAT. This applies even when the prior topic was a domain like WEATHER or FINANCE. "Which one is warmer?", "which is cheaper?", "tell me more about the second one" → always CHAT. References to numbered or ordered items from a prior response ("explain number 5", "what about item 3", "tell me more about the first one") → always CHAT.
 11. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
 11c. Requests for physical actions the assistant cannot perform (cooking, driving, fetching objects, opening doors) → CHAT
+11d. Creative or generative requests directed at the assistant — "write me", "make me a list", "draft a", "suggest some", "I was hoping you could" — are ALWAYS CHAT, never SEARCH or INFORMATION_QUERY, UNLESS they are planning requests (see rule 11e)
+11e. Planning requests — "plan a trip", "come up with an itinerary", "create a plan", "build a schedule", "put together a travel plan", "come up with a 2 week plan" — are ALWAYS PLANNER when the subject is clear from the query or current conversation topic. "I was hoping you could plan a 2 week itinerary" during a Japan conversation → PLANNER.
 11a. Any request asking the assistant to ask/quiz/interview the user about something → CHAT
 11b. Personal statements, preferences, or opinions with NO action keyword ("I don't like X", "I prefer Y", "that's too X") when conversation history is present → CHAT
 12. When in doubt among general questions → INFORMATION_QUERY
@@ -134,7 +145,7 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 
 Respond with EXACTLY ONE WORD — the intent name in uppercase.
 
-Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER, NEWSFEED, INFORMATION_QUERY, NOTES, SEARCH, SPOTIFY, CHAT
+Valid responses: HOME_CONTROL, WEATHER, FINANCE_STOCKS, TRANSPORTATION, REMINDER, NEWSFEED, INFORMATION_QUERY, NOTES, SEARCH, SPOTIFY, PLANNER, CHAT
 
 Examples:
 User: "turn on the lights" → HOME_CONTROL
@@ -165,6 +176,14 @@ User: "fry an egg for me" → CHAT
 User: "make me a coffee" → CHAT
 User: "drive me to the airport" → CHAT
 User: "open the door" → CHAT
+User: "plan a 2 week Japan itinerary" → PLANNER
+User: "I was hoping you could plan a 2 week itinerary" (during Japan conversation) → PLANNER
+User: "come up with a travel plan for my Tokyo trip" → PLANNER
+User: "can you put together an itinerary for me" (during Japan conversation) → PLANNER
+User: "create a study plan for learning Japanese" → PLANNER
+User: "write me a poem about autumn" → CHAT
+User: "make me a list of movie recommendations" → CHAT
+User: "I was hoping you could come up with a 2 week itinerary for me" (no context) → CHAT
 User: "interesting" (after a prior response) → CHAT
 User: "cool" (after a prior response) → CHAT
 User: "wow" (after a prior response) → CHAT

@@ -98,28 +98,8 @@ class VoiceSettings(Document):
 
 class UserPersona(Document):
   last_updated: datetime
-  exchanges_analyzed: int = 0
-
-  # Explicitly stated demographics
-  name: Optional[str] = None                # first name or preferred name
-  gender: Optional[str] = None              # "male" | "female" — only set when explicitly stated
-  date_of_birth: Optional[str] = None       # "YYYY-MM-DD" — only set when user states it explicitly
-  location: Optional[str] = None            # city or country
-  profession: Optional[str] = None
-
-  # Big Five personality dimensions (low | medium | high)
-  openness: Optional[str] = None            # curious/open vs conventional
-  conscientiousness: Optional[str] = None   # organised/disciplined vs spontaneous
-  extraversion: Optional[str] = None        # outgoing/energetic vs reserved
-  agreeableness: Optional[str] = None       # cooperative/empathetic vs critical
-  neuroticism: Optional[str] = None         # anxious/sensitive vs stable/calm
-
-  # Communication
+  name: Optional[str] = None
+  location: Optional[str] = None
   communication_style: Optional[str] = None  # formal | casual | technical | mixed
-
-  # Preferences
   likes: list[str] = []
   dislikes: list[str] = []
-
-  # Meta
-  confidence: float = 0.0

@@ -52,4 +52,18 @@ async def write_journal_entry(for_date: date) -> str:
 
     logger.info(f"[journal] Written entry for {for_date}")
 
+    # Index in Qdrant for semantic journal search (fire-and-forget)
+    import asyncio
+    asyncio.create_task(_index_journal(for_date, narrative))
+
     return narrative
+
+
+async def _index_journal(for_date, narrative: str) -> None:
+    import asyncio
+    try:
+        from utils.journal_index import index_journal_entry
+        await asyncio.to_thread(index_journal_entry, for_date, narrative)
+    except Exception:
+        from utils.log import logger
+        logger.exception("[journal] Failed to index journal entry")

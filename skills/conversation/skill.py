@@ -209,27 +209,20 @@ async def handle_conversation(
   return final
 
 
-_PAST_REFERENCE_PATTERNS = re.compile(
-  r"\b(yesterday|last (night|week|time|session|conversation|we spoke|we talked|we discussed)|"
-  r"the other day|previously|before today|earlier (this week|this month)|"
-  r"you (told|said|mentioned|suggested)|we (talked|discussed|spoke) (about|on)|"
-  r"remember when|do you recall|what did (we|you) (say|discuss|talk) about)\b",
-  re.IGNORECASE,
-)
-
-
-def _references_past_session(query: str) -> bool:
-  return bool(_PAST_REFERENCE_PATTERNS.search(query))
-
-
-async def _fetch_past_context() -> str:
-  """Return the most recent journal summary as context."""
-  from skills.journal import get_latest_journal_summary
-
-  summary = await get_latest_journal_summary()
-  if not summary:
+async def _fetch_relevant_memories(query: str) -> str:
+  """Return semantically relevant memories for this query, or empty string."""
+  if len(query.split()) < 4:
     return ""
-  return f"## Summary of your last conversation\n{summary}"
+  try:
+    from utils.memory_client import search_memories
+    memories = await asyncio.to_thread(search_memories, query)
+    if not memories:
+      return ""
+    lines = "\n".join(f"- {m}" for m in memories)
+    return f"## What I remember:\n{lines}"
+  except Exception:
+    logger.exception("[chat] Memory search failed")
+    return ""
 
 
 async def handle_chat(query: str, on_token: Callable[[str], None] | None = None) -> str:
@@ -314,12 +307,10 @@ async def handle_chat(query: str, on_token: Callable[[str], None] | None = None)
   if _rolling_summary:
     system = system + "\n\n## Summary of earlier in this conversation:\n" + _rolling_summary
 
-  if _references_past_session(query):
-    logger.debug("[CHAT] Reference to past made")
-    past_context = await _fetch_past_context()
-    logger.debug(past_context)
-    if past_context:
-      system = system + "\n\nYour conversation with the user earlier:\n" + past_context
+  memories = await _fetch_relevant_memories(query)
+  if memories:
+    logger.debug(f"[CHAT] Injecting memories: {memories[:120]}")
+    system = system + "\n\n" + memories
 
   # Serialize history into a single string for structured output
   history_lines = []
@@ -347,3 +338,47 @@ async def handle_chat(query: str, on_token: Callable[[str], None] | None = None)
   _history.append(AIMessage(content=final))
 
   return final
+
+
+async def generate_greeting() -> str:
+  """Generate a short session-opening greeting in the active persona's voice.
+
+  Checks UserPersona for the user's name first, then falls back to memory search.
+  Falls back to a generic greeting on any failure.
+  """
+  try:
+    # Prefer the structured UserPersona record — populated by the personalizer on startup
+    user_name: str | None = None
+    try:
+      from db.schemas import UserPersona
+      persona_doc = await UserPersona.find_one()
+      if persona_doc and persona_doc.name:
+        user_name = persona_doc.name
+    except Exception:
+      pass
+
+    # Fall back to semantic memory search if persona has no name yet
+    if not user_name:
+      try:
+        from utils.memory_client import search_memories
+        memories = await asyncio.to_thread(search_memories, "user name")
+        if memories:
+          user_name = memories[0]  # use the top hit as a rough name hint
+      except Exception:
+        pass
+
+    name_instruction = f" The user's name is {user_name}. Use it naturally." if user_name else ""
+
+    system = (
+      get_active_preamble()
+      + "\n\nGenerate a single short greeting (one sentence, max 15 words) to open a new session."
+      + name_instruction
+      + " Stay in character. Do NOT ask a question. Do NOT use markdown."
+      + " Every session greeting must be different — vary the wording and angle each time."
+    )
+    llm = _get_llm(temperature=0.1, max_tokens=100)
+    response = await llm.ainvoke([SystemMessage(content=system), HumanMessage(content="Greet me.")])
+    return _strip_think(response.content).strip()
+  except Exception:
+    logger.exception("[greeting] Failed to generate greeting")
+    return "Hello user... How may I assist?"

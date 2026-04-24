@@ -85,35 +85,22 @@ async def cmd_planner(args: str) -> None:
 
 
 async def cmd_analyze() -> None:
-    history_text = _format_history()
-    if not history_text:
-        print("[/analyze] No conversation history to analyse.")
+    from skills.personalizer.skill import analyze_persona_from_log, get_persona_context
+    from db.schemas import Conversations
+    from datetime import date
+
+    today = date.today()
+    doc = await Conversations.find_one(Conversations.date == today)
+    if not doc or not doc.exchanges:
+        print("[/analyze] No conversations from today to analyse.")
         return
 
-    from skills.personalizer.skill import update_persona_from_exchange
-
-    exchanges = list(_history)
-    if len(exchanges) < 2:
-        print("[/analyze] Not enough history to analyse.")
-        return
-
-    # Walk paired (human, assistant) messages from history
-    count = 0
-    i = 0
-    while i + 1 < len(exchanges):
-        human = exchanges[i]
-        assistant = exchanges[i + 1]
-        if human.__class__.__name__ == "HumanMessage" and assistant.__class__.__name__ != "HumanMessage":
-            await update_persona_from_exchange(question=human.content, answer=assistant.content)
-            count += 1
-        i += 2
-
-    from skills.personalizer.skill import get_persona_context
+    await analyze_persona_from_log(doc.exchanges)
     context = get_persona_context()
     if context:
-        print(f"[/analyze] Done ({count} exchange(s) scanned).\n{context}")
+        print(f"[/analyze] Done ({len(doc.exchanges)} exchange(s) scanned).\n{context}")
     else:
-        print(f"[/analyze] Done ({count} exchange(s) scanned). No new personal facts found.")
+        print(f"[/analyze] Done ({len(doc.exchanges)} exchange(s) scanned). No new personal facts found.")
 
 
 async def cmd_ctx() -> None:
@@ -196,17 +183,29 @@ async def cmd_note(args: str) -> None:
     print(f"[/note] {result}")
 
 
+async def cmd_flush_memory() -> None:
+    """Delete all mem0 memories for the default user."""
+    try:
+        from utils.memory_client import _get_memory
+        mem = _get_memory()
+        mem.delete_all(user_id="default")
+        print("[/flush-memory] All memories deleted.")
+    except Exception as e:
+        print(f"[/flush-memory] Failed: {e}")
+
+
 async def cmd_help() -> None:
     print(
         "\nAvailable commands:\n"
-        "  /save           — summarise and save the current session to the database\n"
-        "  /clear          — wipe the in-memory conversation history\n"
-        "  /history        — print session history to the terminal\n"
-        "  /analyze        — extract personal facts from this session into your persona profile\n"
-        "  /ctx            — show context window usage for the current session\n"
-        "  /note [title]   — save a note from the current conversation context\n"
-        "  /planner <task> — run an autonomous multi-step planning agent\n"
-        "  /help           — show this message\n"
+        "  /save            — summarise and save the current session to the database\n"
+        "  /clear           — wipe the in-memory conversation history\n"
+        "  /history         — print session history to the terminal\n"
+        "  /analyze         — extract personal facts from this session into your persona profile\n"
+        "  /flush-memory    — delete all mem0 memories\n"
+        "  /ctx             — show context window usage for the current session\n"
+        "  /note [title]    — save a note from the current conversation context\n"
+        "  /planner <task>  — run an autonomous multi-step planning agent\n"
+        "  /help            — show this message\n"
     )
 
 
@@ -215,6 +214,7 @@ _COMMANDS = {
     "/clear": cmd_clear,
     "/history": cmd_history,
     "/analyze": cmd_analyze,
+    "/flush-memory": cmd_flush_memory,
     "/ctx": cmd_ctx,
     "/note": cmd_note,
     "/planner": cmd_planner,

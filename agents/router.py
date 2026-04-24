@@ -45,9 +45,25 @@ async def _dispatch(skill, effective_query: str, original_query: str, on_token=N
   return await handle_conversation(original_query, response, on_token=on_token)
 
 
+def _build_planner_task(query: str) -> str:
+  """Synthesise a clear task string for the planner from the query and current topic."""
+  topic = get_current_topic()
+  if topic and topic.lower() not in query.lower():
+    return f"{query} ({topic})"
+  return query
+
+
 async def route_intent(intent: str, query: str, on_token=None) -> str:
   """Route a classified intent to its matching skill."""
-  skill_id = next((sid for sid in SKILL_MAP if sid in intent.strip().upper()), "CHAT")
+  normalized = intent.strip().upper()
+
+  if normalized == "PLANNER":
+    from skills.planner.skill import run_planner
+    task = _build_planner_task(query)
+    logger.debug(f"Intent: PLANNER — task: {task!r}")
+    return await run_planner(task)
+
+  skill_id = next((sid for sid in SKILL_MAP if sid in normalized), "CHAT")
   logger.debug(f"Intent: {skill_id}")
 
   skill = SKILL_MAP[skill_id]

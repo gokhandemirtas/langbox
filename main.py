@@ -60,9 +60,7 @@ async def main(debug: bool = False, emote: bool = False):
 
   if "--server" in sys.argv:
     await start_api_server()
-
   
-  telegram_log = await start_telegram_bot()
   personalizer_log = await start_personalizer()
 
   from llama_cpp import llama_supports_gpu_offload
@@ -91,16 +89,23 @@ async def main(debug: bool = False, emote: bool = False):
   table.add_row("Debug", "on" if debug else "off")
   table.add_row("Personalizer", personalizer_log)
   table.add_row("Database", db_init_log)
-  table.add_row("Telegram", telegram_log)
+  if "--telegram" in sys.argv:
+    telegram_log = await start_telegram_bot()
+    table.add_row("Telegram", telegram_log)
+  
   table.add_row("Boot time", f"{boot_time:.2f}s")
   console = Console(stderr=True, force_terminal=True)
   console.print(table)
 
+  # Opening greeting
+  from skills.conversation.skill import generate_greeting
+  greeting = await generate_greeting()
+  console.print(f"\n[green]{greeting}[/green]")
 
   # Continuous conversation loop
   while True:
     try:
-      user_input = (await asyncio.to_thread(console.input, "\n[green]How may I assist?[/green]\n❯ ")).strip()
+      user_input = (await asyncio.to_thread(console.input, "❯ ")).strip()
       if not user_input:
         continue
       if user_input.startswith("/"):
@@ -109,10 +114,10 @@ async def main(debug: bool = False, emote: bool = False):
       await run_intent_classifier(user_input)
     except KeyboardInterrupt:
       await cmd_save()
-      print("\n\nGoodbye! Have a great day!")
+      console.print("\n\nGoodbye! Have a great day!")
       break
     except EOFError:
-      print("\n\nGoodbye! Have a great day!")
+      console.print("\n\nGoodbye! Have a great day!")
       break
     except Exception as e:
       logger.error(f"An error occurred: {e}")

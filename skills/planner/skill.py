@@ -23,7 +23,6 @@ _PLANNER_TOOLS = Literal[
     "INFORMATION_QUERY",
     "FINANCE_STOCKS",
     "NEWSFEED",
-    "TRANSPORTATION",
     "REMINDER",
     "DONE",
 ]
@@ -34,7 +33,6 @@ _TOOL_DESCRIPTIONS = {
     "INFORMATION_QUERY": "Look up factual knowledge via Wikipedia",
     "FINANCE_STOCKS": "Get stock prices and financial market data",
     "NEWSFEED": "Get latest news headlines and current events",
-    "TRANSPORTATION": "Get directions and navigation between locations",
     "REMINDER": "Set a reminder or timer",
     "DONE": "Stop gathering information — enough data has been collected to write the plan",
 }
