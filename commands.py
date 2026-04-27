@@ -183,13 +183,94 @@ async def cmd_note(args: str) -> None:
     print(f"[/note] {result}")
 
 
-async def cmd_flush_memory() -> None:
-    """Delete all mem0 memories for the default user."""
+async def cmd_memories(args: str) -> None:
+    """List or search mem0 memories.
+
+    Usage:
+      /memories           — list all stored memories
+      /memories <query>   — semantic search for relevant memories
+    """
     try:
-        from utils.memory_client import _get_memory
-        mem = _get_memory()
-        mem.delete_all(user_id="default")
-        print("[/flush-memory] All memories deleted.")
+        from utils.memory_client import _get_memory, search_memories
+
+        query = args.strip()
+        if query:
+            results = search_memories(query, limit=10)
+            if not results:
+                print(f"[/memories] No memories found for '{query}'.")
+                return
+            print(f"\n[/memories] Top memories for '{query}':")
+            for i, text in enumerate(results, 1):
+                print(f"  {i}. {text}")
+        else:
+            mem = _get_memory()
+            raw = mem.get_all(filters={"user_id": "default"}, top_k=1000)
+            results = raw.get("results", raw) if isinstance(raw, dict) else raw
+            if not results:
+                print("[/memories] No memories stored yet.")
+                return
+            print(f"\n[/memories] {len(results)} stored memory/memories:")
+            for i, r in enumerate(results, 1):
+                text = r.get("memory") or r.get("text") if isinstance(r, dict) else str(r)
+                print(f"  {i}. {text}")
+        print()
+    except Exception as e:
+        print(f"[/memories] Failed: {e}")
+
+
+async def cmd_flush_memory() -> None:
+    """Delete all mem0 memories with a progress indicator."""
+    import os
+    from rich.progress import Progress, BarColumn, TaskProgressColumn, TextColumn
+
+    try:
+        from qdrant_client import QdrantClient
+
+        host = os.environ.get("QDRANT_HOST", "localhost")
+        port = int(os.environ.get("QDRANT_PORT", "6333"))
+        client = QdrantClient(host=host, port=port)
+
+        # Collect all point IDs first so we know the total
+        all_ids = []
+        offset = None
+        while True:
+            result, next_offset = client.scroll(
+                "langbox_memories",
+                limit=100,
+                offset=offset,
+                with_payload=False,
+                with_vectors=False,
+            )
+            all_ids.extend(p.id for p in result)
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        if not all_ids:
+            print("[/flush-memory] Nothing to delete.")
+            return
+
+        with Progress(
+            TextColumn("[[]/flush-memory]"),
+            BarColumn(),
+            TaskProgressColumn(),
+            TextColumn("{task.completed}/{task.total} memories cleared"),
+            transient=True,
+        ) as progress:
+            task = progress.add_task("Deleting", total=len(all_ids))
+            batch_size = 50
+            for i in range(0, len(all_ids), batch_size):
+                batch = all_ids[i : i + batch_size]
+                client.delete(
+                    "langbox_memories",
+                    points_selector=batch,
+                )
+                progress.advance(task, len(batch))
+
+        # Reset mem0 singleton so next call reconnects to the now-empty collection
+        import utils.memory_client as _mc
+        _mc._memory = None
+        print(f"[/flush-memory] {len(all_ids)} memories deleted.")
     except Exception as e:
         print(f"[/flush-memory] Failed: {e}")
 
@@ -201,6 +282,7 @@ async def cmd_help() -> None:
         "  /clear           — wipe the in-memory conversation history\n"
         "  /history         — print session history to the terminal\n"
         "  /analyze         — extract personal facts from this session into your persona profile\n"
+        "  /memories [q]    — list all mem0 memories, or search with a query\n"
         "  /flush-memory    — delete all mem0 memories\n"
         "  /ctx             — show context window usage for the current session\n"
         "  /note [title]    — save a note from the current conversation context\n"
@@ -214,6 +296,7 @@ _COMMANDS = {
     "/clear": cmd_clear,
     "/history": cmd_history,
     "/analyze": cmd_analyze,
+    "/memories": cmd_memories,
     "/flush-memory": cmd_flush_memory,
     "/ctx": cmd_ctx,
     "/note": cmd_note,

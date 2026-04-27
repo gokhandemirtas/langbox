@@ -59,7 +59,9 @@ class _LangboxLlm:
             text = repair_json(text)
             # mem0 expects {"memory": [{"text": "...", "event": "ADD|UPDATE|DELETE|NONE"}]}
             # Local LLMs sometimes return malformed items (nested lists, bare strings).
-            # Normalise so every item in the "memory" list is a dict with a "text" key.
+            # Normalise to dicts while preserving event values — forcing ADD on everything
+            # breaks mem0's dedup phase which relies on NONE/UPDATE/DELETE events.
+            _VALID_EVENTS = {"ADD", "UPDATE", "DELETE", "NONE"}
             try:
                 import json as _json
                 parsed = _json.loads(text)
@@ -69,11 +71,24 @@ class _LangboxLlm:
                         normalised = []
                         for item in items:
                             if isinstance(item, dict) and "text" in item:
+                                # Already well-formed — preserve event as-is
                                 normalised.append(item)
                             elif isinstance(item, list) and item:
-                                normalised.append({"text": str(item[0]), "event": "ADD"})
+                                # ["fact text", "EVENT"] or ["fact text"]
+                                fact = str(item[0])
+                                event = str(item[1]).upper() if len(item) > 1 and str(item[1]).upper() in _VALID_EVENTS else "ADD"
+                                normalised.append({"text": fact, "event": event})
                             elif isinstance(item, str) and item:
-                                normalised.append({"text": item, "event": "ADD"})
+                                # "EVENT: fact text" or bare fact string
+                                upper = item.upper()
+                                event = "ADD"
+                                fact = item
+                                for ev in _VALID_EVENTS:
+                                    if upper.startswith(f"{ev}:"):
+                                        event = ev
+                                        fact = item[len(ev) + 1:].strip()
+                                        break
+                                normalised.append({"text": fact, "event": event})
                         parsed["memory"] = normalised
                         text = _json.dumps(parsed)
             except Exception:
