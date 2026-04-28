@@ -14,7 +14,7 @@ _console = Console(stderr=True, force_terminal=True)
 
 from agents.router import route_intent
 from pydantic_types.intent_response import IntentResponse
-from skills.conversation.skill import get_current_topic, get_recent_history
+from skills.conversation.skill import get_recent_history
 from tts.tts import speak
 from utils.llm_structured_output import generate_structured_output
 
@@ -101,7 +101,7 @@ Multi-step planning requests that require research and synthesis into a structur
 - "plan a 2 week itinerary for Japan", "come up with a travel plan for me", "create a study plan for learning Spanish"
 - "plan my trip to Tokyo", "can you put together an itinerary", "I need a plan for my Japan trip"
 - "come up with a 2 week schedule", "build me a Japan travel itinerary", "design a workout plan"
-- Only applies when the subject of the plan is clear from the query OR the current conversation topic. If there is no clear subject and no conversation context, classify as CHAT instead.
+- Only applies when the subject of the plan is clear from the query. If there is no clear subject, classify as CHAT instead.
 - **Keywords:** plan, itinerary, schedule, put together, come up with a plan, create a plan, build a plan, design a plan, map out
 
 ### 12. CHAT
@@ -133,7 +133,8 @@ General conversation, greetings, feedback, follow-up comparisons, reactions, per
 11. Nonsensical, incomplete, or out-of-domain queries with NO recognizable keyword → CHAT
 11c. Requests for physical actions the assistant cannot perform (cooking, driving, fetching objects, opening doors) → CHAT
 11d. Creative or generative requests directed at the assistant — "write me", "make me a list", "draft a", "suggest some", "I was hoping you could" — are ALWAYS CHAT, never SEARCH or INFORMATION_QUERY, UNLESS they are planning requests (see rule 11e)
-11e. Planning requests — "plan a trip", "come up with an itinerary", "create a plan", "build a schedule", "put together a travel plan", "come up with a 2 week plan" — are ALWAYS PLANNER when the subject is clear from the query or current conversation topic. "I was hoping you could plan a 2 week itinerary" during a Japan conversation → PLANNER.
+11e. Planning requests — "plan a trip", "come up with an itinerary", "create a plan", "build a schedule", "put together a travel plan", "come up with a 2 week plan" — are ALWAYS PLANNER when the subject is clear from the query.
+11f. Simple calculations, conversions, or single-step reasoning tasks ("calculate my birth year", "how old am I", "convert 10 miles to km") are ALWAYS CHAT — even when followed by "save it", "remember that", or "add it to memory". These are single-step tasks, not multi-step plans.
 11a. Any request asking the assistant to ask/quiz/interview the user about something → CHAT
 11b. Personal statements, preferences, or opinions with NO action keyword ("I don't like X", "I prefer Y", "that's too X") when conversation history is present → CHAT
 12. When in doubt among general questions → INFORMATION_QUERY
@@ -177,9 +178,7 @@ User: "make me a coffee" → CHAT
 User: "drive me to the airport" → CHAT
 User: "open the door" → CHAT
 User: "plan a 2 week Japan itinerary" → PLANNER
-User: "I was hoping you could plan a 2 week itinerary" (during Japan conversation) → PLANNER
 User: "come up with a travel plan for my Tokyo trip" → PLANNER
-User: "can you put together an itinerary for me" (during Japan conversation) → PLANNER
 User: "create a study plan for learning Japanese" → PLANNER
 User: "write me a poem about autumn" → CHAT
 User: "make me a list of movie recommendations" → CHAT
@@ -199,19 +198,14 @@ User: "I prefer warm weather" (after weather discussion) → CHAT
 def _build_classifier_prompt(user_query: str) -> str:
   """Prepend recent conversation history so the classifier can resolve follow-ups."""
   history = get_recent_history(n=4)
-  topic = get_current_topic()
 
-  if not history and not topic:
+  if not history:
     return user_query
 
-  lines = []
-  if topic:
-    lines.append(f"## Current topic: {topic}")
-  if history:
-    lines.append("## Recent conversation")
-    for human, assistant in history:
-      lines.append(f"User: {human}")
-      lines.append(f"Assistant: {assistant[:600]}")  # truncate long responses
+  lines = ["## Recent conversation"]
+  for human, assistant in history:
+    lines.append(f"User: {human}")
+    lines.append(f"Assistant: {assistant[:600]}")  # truncate long responses
   lines.append(f"\nCurrent query: {user_query}")
   return "\n".join(lines)
 

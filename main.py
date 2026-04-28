@@ -2,16 +2,33 @@ import asyncio
 import os
 import sys
 
+from prompt_toolkit import PromptSession
+from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.styles import Style
 from rich.console import Console
 
 from agents.intent_classifier import run_intent_classifier
 from api.server import start_api_server
-from commands import cmd_save, handle_command
+from commands import _COMMANDS, cmd_save, handle_command
 from db.init import db_init
 from skills.conversation.skill import enable_emote
 from skills.personalizer.skill import start_personalizer
 from skills.telegram import start_telegram_bot
 from skills.telegram.skill import enable_tts
+
+
+class _SlashCompleter(Completer):
+    def get_completions(self, document, complete_event):
+        text = document.text_before_cursor
+        if not text.startswith("/"):
+            return
+        for cmd in _COMMANDS:
+            if cmd.startswith(text):
+                yield Completion(cmd, start_position=-len(text))
+
+
+_prompt_style = Style.from_dict({"prompt": "ansicyan bold"})
+_session: PromptSession = PromptSession(completer=_SlashCompleter(), style=_prompt_style)
 
 # Suppress GGML/llama.cpp initialization logs - MUST be set before ANY imports that use llama_cpp
 os.environ["GGML_METAL_LOG_LEVEL"] = "0"
@@ -109,7 +126,7 @@ async def main(debug: bool = False, emote: bool = False):
   # Continuous conversation loop
   while True:
     try:
-      user_input = (await asyncio.to_thread(console.input, "❯ ")).strip()
+      user_input = (await asyncio.to_thread(_session.prompt, "❯ ")).strip()
       if not user_input:
         continue
       if user_input.startswith("/"):

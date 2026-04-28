@@ -164,12 +164,7 @@ def compact_memories(user_id: str = "default") -> tuple[int, int]:
 
     Returns (original_count, compacted_count).
     """
-    import json
     import os
-    import uuid
-    from datetime import datetime, timezone
-
-    from utils.embedder import embed
 
     mem = _get_memory()
 
@@ -217,54 +212,17 @@ def compact_memories(user_id: str = "default") -> tuple[int, int]:
         logger.warning("[memory_client] compact_memories: LLM returned empty list — aborting")
         return original_count, original_count
 
-    # 3. Flush all existing points from Qdrant
-    from qdrant_client import QdrantClient
-    from qdrant_client.models import PointStruct
+    # 3. Flush all existing memories via mem0, then re-add compacted facts
+    raw_all = mem.get_all(filters={"user_id": user_id}, top_k=1000)
+    all_results = raw_all.get("results", raw_all) if isinstance(raw_all, dict) else raw_all
+    for r in all_results:
+        mem_id = r.get("id") if isinstance(r, dict) else None
+        if mem_id:
+            mem.delete(mem_id)
 
-    host = os.environ.get("QDRANT_HOST", "localhost")
-    port = int(os.environ.get("QDRANT_PORT", "6333"))
-    client = QdrantClient(host=host, port=port)
-
-    all_ids = []
-    offset = None
-    while True:
-        batch, next_offset = client.scroll(
-            "langbox_memories",
-            limit=100,
-            offset=offset,
-            with_payload=False,
-            with_vectors=False,
-        )
-        all_ids.extend(p.id for p in batch)
-        if next_offset is None:
-            break
-        offset = next_offset
-
-    if all_ids:
-        client.delete("langbox_memories", points_selector=all_ids)
-
-    # 4. Re-insert compacted facts directly (bypasses LLM extraction)
-    now = datetime.now(timezone.utc).isoformat()
-    points = []
+    # 4. Re-add via mem0's native add() so mem0 owns the schema
     for fact in compacted_facts:
-        points.append(
-            PointStruct(
-                id=str(uuid.uuid4()),
-                vector=embed(fact),
-                payload={
-                    "memory": fact,
-                    "user_id": user_id,
-                    "hash": str(hash(fact)),
-                    "created_at": now,
-                    "updated_at": now,
-                },
-            )
-        )
-    client.upsert("langbox_memories", points=points)
-
-    # Reset singleton so mem0's internal state reflects the new collection
-    global _memory
-    _memory = None
+        mem.add(fact, user_id=user_id)
 
     logger.debug(f"[memory_client] compact: {original_count} → {len(compacted_facts)}")
     return original_count, len(compacted_facts)

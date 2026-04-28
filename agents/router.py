@@ -2,29 +2,8 @@ import asyncio
 
 from utils.log import logger
 
-from skills.conversation.skill import handle_conversation, get_current_topic
+from skills.conversation.skill import handle_conversation
 from skills.registry import SKILL_MAP
-
-_TOPIC_ENRICHED_INTENTS = {"SEARCH", "INFORMATION_QUERY"}
-_SHORT_QUERY_WORDS = 6
-
-
-def _enrich_query(query: str, intent: str) -> str:
-  """Append the current topic to short follow-up search queries.
-
-  e.g. query="a jamie oliver recipe", topic="egg recipe"
-       → "a jamie oliver recipe egg recipe"
-  """
-  if intent not in _TOPIC_ENRICHED_INTENTS:
-    return query
-  topic = get_current_topic()
-  if not topic:
-    return query
-  if len(query.split()) <= _SHORT_QUERY_WORDS:
-    enriched = f"{query} {topic}"
-    logger.debug(f"[router] query enriched with topic: '{enriched}'")
-    return enriched
-  return query
 
 
 async def _dispatch(skill, effective_query: str, original_query: str, on_token=None, on_status=None) -> str:
@@ -45,21 +24,13 @@ async def _dispatch(skill, effective_query: str, original_query: str, on_token=N
   return await handle_conversation(original_query, response, on_token=on_token)
 
 
-def _build_planner_task(query: str) -> str:
-  """Synthesise a clear task string for the planner from the query and current topic."""
-  topic = get_current_topic()
-  if topic and topic.lower() not in query.lower():
-    return f"{query} ({topic})"
-  return query
-
-
 async def route_intent(intent: str, query: str, on_token=None, on_status=None) -> str:
   """Route a classified intent to its matching skill."""
   normalized = intent.strip().upper()
 
   if normalized == "PLANNER":
     from skills.planner.skill import run_planner
-    task = _build_planner_task(query)
+    task = query
     logger.debug(f"Intent: PLANNER — task: {task!r}")
     return await run_planner(task)
 
@@ -67,7 +38,7 @@ async def route_intent(intent: str, query: str, on_token=None, on_status=None) -
   logger.debug(f"Intent: {skill_id}")
 
   skill = SKILL_MAP[skill_id]
-  effective_query = _enrich_query(query, skill_id)
+  effective_query = query
 
   if skill.auth_provider and not await skill.auth_provider.is_connected():
     logger.info(f"[router] {skill.auth_provider.display_name} not connected — starting auth flow")

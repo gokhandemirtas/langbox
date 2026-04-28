@@ -20,32 +20,17 @@ def _strip_think(text: str) -> str:
 
 
 class _ConversationResponse(BaseModel):
-  topic: str = Field(description="3-5 word label describing the subject of this exchange (e.g. 'weather in London', 'Tesla stock price')")
   answer: str = Field(description="Natural language response presenting the data to the user")
 
 
 class _ChatResponse(BaseModel):
-  topic: str = Field(description="3-5 word label describing what this conversation is about (e.g. 'French Revolution causes', 'best pizza in London')")
   answer: str = Field(description="Your conversational response to the user")
 
 
-class _TopicResponse(BaseModel):
-  topic: str = Field(description="3-5 word label describing the subject of this exchange")
-
-
-# Tracks the active conversation topic so the intent classifier can resolve follow-ups.
-_current_topic: str | None = None
-
-
-def get_current_topic() -> str | None:
-  return _current_topic
-
-
 def reset_session() -> None:
-  """Clear in-memory conversation state. Called after compaction so stale topic
-  and history don't bleed into the next session."""
-  global _current_topic, _rolling_summary
-  _current_topic = None
+  """Clear in-memory conversation state. Called after compaction so stale history
+  doesn't bleed into the next session."""
+  global _rolling_summary
   _rolling_summary = None
   _history.clear()
 
@@ -171,11 +156,8 @@ async def handle_conversation(
   """Wrap a skill's raw output into natural language — stateless, no session memory.
 
   When on_token is provided (voice WebSocket path), streams tokens via ChatLlamaCpp
-  instead of waiting for the full structured output. Topic update is skipped in this
-  mode since the response is free-form text.
+  instead of waiting for the full structured output.
   """
-  global _current_topic
-
   system_prompt = _data_prompt(handler_response)
 
   if on_token is not None:
@@ -201,8 +183,6 @@ async def handle_conversation(
     max_tokens=768,
   )
   final = _strip_think(result.answer)
-  _current_topic = result.topic
-  logger.debug(f"[conversation] topic='{_current_topic}'")
 
   # Store in shared history so CHAT can reference this exchange
   _history.append(HumanMessage(content=user_query))
@@ -232,7 +212,6 @@ async def handle_chat(query: str, on_token: Callable[[str], None] | None = None)
 
   When on_token is provided (voice WebSocket path), streams tokens via ChatLlamaCpp.
   """
-  global _current_topic
 
   from skills.conversation.reasoning_engine import reason_and_act, should_use_reasoning
 
@@ -278,18 +257,6 @@ async def handle_chat(query: str, on_token: Callable[[str], None] | None = None)
     persona = get_persona_context()
     final = await reason_and_act(query, conversation_context, persona=persona)
 
-    # Extract topic from the completed reasoning exchange
-    topic_result = await asyncio.to_thread(
-      generate_structured_output,
-      model_name=os.environ["MODEL_GENERALIST"],
-      user_prompt=f"User asked: {query}\nAnswer: {final[:300]}",
-      system_prompt="Extract a 3-5 word topic label describing the subject of this exchange.",
-      pydantic_model=_TopicResponse,
-      max_tokens=50,
-    )
-    _current_topic = topic_result.topic
-    logger.debug(f"[chat/reasoning] topic='{_current_topic}'")
-
     _history.append(HumanMessage(content=query))
     _history.append(AIMessage(content=final))
     return final
@@ -333,8 +300,6 @@ async def handle_chat(query: str, on_token: Callable[[str], None] | None = None)
     max_tokens=1024,
   )
   final = _strip_think(result.answer)
-  _current_topic = result.topic
-  logger.debug(f"[chat] topic='{_current_topic}'")
 
   _history.append(HumanMessage(content=query))
   _history.append(AIMessage(content=final))
