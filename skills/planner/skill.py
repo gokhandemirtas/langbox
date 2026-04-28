@@ -55,8 +55,11 @@ Rules:
 
 Decide the next tool to call."""
 
-_SYNTHESIZE_PROMPT = """You are a planning assistant. Using the research data below, write a clear and practical plan for the user's task.
-Structure it with markdown: use headers, bullet points, and bold text where appropriate. Be specific and concise."""
+_SYNTHESIZE_PROMPT = """You are a planning assistant. Using the research data below, produce the right output for the user's task.
+
+If the task requires gathering information FROM the user (e.g. an interview, a questionnaire, discovering their life story, getting to know them) — do NOT write a written plan. Instead, start doing it: one sentence to set expectations, then ask the first question. Let the conversation do the rest.
+
+For all other tasks, write a clear and practical plan structured with markdown: headers, bullet points, and bold text where appropriate. Be specific and concise."""
 
 
 class PlannerAction(BaseModel):

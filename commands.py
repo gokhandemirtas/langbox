@@ -218,6 +218,72 @@ async def cmd_memories(args: str) -> None:
         print(f"[/memories] Failed: {e}")
 
 
+async def cmd_pluck_memory(args: str) -> None:
+    """Delete a single memory by its list number.
+
+    Usage:
+      /pluck-memory 13   — delete memory #13 from /memories output
+    """
+    try:
+        from utils.memory_client import _get_memory
+
+        arg = args.strip()
+        if not arg.isdigit():
+            print("[/pluck-memory] Usage: /pluck-memory <number>")
+            return
+
+        index = int(arg)
+        if index < 1:
+            print("[/pluck-memory] Number must be 1 or greater.")
+            return
+
+        mem = _get_memory()
+        raw = mem.get_all(filters={"user_id": "default"}, top_k=1000)
+        results = raw.get("results", raw) if isinstance(raw, dict) else raw
+
+        if not results:
+            print("[/pluck-memory] No memories stored.")
+            return
+
+        if index > len(results):
+            print(f"[/pluck-memory] Only {len(results)} memories exist.")
+            return
+
+        entry = results[index - 1]
+        memory_id = entry.get("id") if isinstance(entry, dict) else None
+        text = entry.get("memory") or entry.get("text") if isinstance(entry, dict) else str(entry)
+
+        if not memory_id:
+            print(f"[/pluck-memory] Could not find ID for memory #{index}.")
+            return
+
+        mem.delete(memory_id)
+        print(f"[/pluck-memory] Deleted #{index}: {text}")
+    except Exception as e:
+        print(f"[/pluck-memory] Failed: {e}")
+
+
+async def cmd_compact_memory() -> None:
+    """Deduplicate and merge mem0 memories using the LLM, then replace the store."""
+    from rich.console import Console
+    from rich.spinner import Spinner
+
+    console = Console()
+    try:
+        from utils.memory_client import compact_memories
+
+        with console.status("[bold cyan]Compacting memories…[/bold cyan]", spinner="dots"):
+            before, after = compact_memories()
+
+        if before == 0:
+            print("[/compact-memory] No memories stored yet.")
+        else:
+            removed = before - after
+            print(f"[/compact-memory] Done. {before} → {after} memories ({removed} removed).")
+    except Exception as e:
+        print(f"[/compact-memory] Failed: {e}")
+
+
 async def cmd_flush_memory() -> None:
     """Delete all mem0 memories with a progress indicator."""
     import os
@@ -278,16 +344,18 @@ async def cmd_flush_memory() -> None:
 async def cmd_help() -> None:
     print(
         "\nAvailable commands:\n"
-        "  /save            — summarise and save the current session to the database\n"
-        "  /clear           — wipe the in-memory conversation history\n"
-        "  /history         — print session history to the terminal\n"
-        "  /analyze         — extract personal facts from this session into your persona profile\n"
-        "  /memories [q]    — list all mem0 memories, or search with a query\n"
-        "  /flush-memory    — delete all mem0 memories\n"
-        "  /ctx             — show context window usage for the current session\n"
-        "  /note [title]    — save a note from the current conversation context\n"
-        "  /planner <task>  — run an autonomous multi-step planning agent\n"
-        "  /help            — show this message\n"
+        "  /save              — summarise and save the current session to the database\n"
+        "  /clear             — wipe the in-memory conversation history\n"
+        "  /history           — print session history to the terminal\n"
+        "  /analyze           — extract personal facts from this session into your persona profile\n"
+        "  /memories [q]      — list all mem0 memories, or search with a query\n"
+        "  /compact-memory    — deduplicate and merge memories using the LLM\n"
+        "  /pluck-memory <n>  — delete memory #n from the /memories list\n"
+        "  /flush-memory      — delete all mem0 memories\n"
+        "  /ctx               — show context window usage for the current session\n"
+        "  /note [title]      — save a note from the current conversation context\n"
+        "  /planner <task>    — run an autonomous multi-step planning agent\n"
+        "  /help              — show this message\n"
     )
 
 
@@ -297,6 +365,8 @@ _COMMANDS = {
     "/history": cmd_history,
     "/analyze": cmd_analyze,
     "/memories": cmd_memories,
+    "/compact-memory": cmd_compact_memory,
+    "/pluck-memory": cmd_pluck_memory,
     "/flush-memory": cmd_flush_memory,
     "/ctx": cmd_ctx,
     "/note": cmd_note,

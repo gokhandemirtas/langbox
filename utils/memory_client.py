@@ -159,6 +159,117 @@ def add_exchange(user_msg: str, assistant_msg: str, user_id: str = "default") ->
         logger.exception("[memory_client] Failed to store exchange")
 
 
+def compact_memories(user_id: str = "default") -> tuple[int, int]:
+    """LLM-squash duplicate/redundant memories and replace the store.
+
+    Returns (original_count, compacted_count).
+    """
+    import json
+    import os
+    import uuid
+    from datetime import datetime, timezone
+
+    from utils.embedder import embed
+
+    mem = _get_memory()
+
+    # 1. Fetch all stored memories
+    raw = mem.get_all(filters={"user_id": user_id}, top_k=1000)
+    results = raw.get("results", raw) if isinstance(raw, dict) else raw
+    if not results:
+        return 0, 0
+
+    entries = []
+    for r in results:
+        text = r.get("memory") or r.get("text") if isinstance(r, dict) else str(r)
+        if text:
+            entries.append(text)
+
+    original_count = len(entries)
+    if original_count == 0:
+        return 0, 0
+
+    # 2. Ask the LLM to deduplicate and merge
+    from pydantic import BaseModel
+    from utils.llm_structured_output import generate_structured_output
+
+    class _CompactedMemories(BaseModel):
+        facts: list[str]
+
+    numbered = "\n".join(f"{i + 1}. {t}" for i, t in enumerate(entries))
+    compacted = generate_structured_output(
+        model_name=os.environ["MODEL_GENERALIST"],
+        user_prompt=f"Stored facts:\n{numbered}",
+        system_prompt=(
+            "You are given a numbered list of personal memory facts about the user. "
+            "Your task:\n"
+            "1. Remove exact or near-duplicate facts — keep the most specific version.\n"
+            "2. Merge facts that say the same thing differently into one clear statement.\n"
+            "3. Discard any fact that is world knowledge, a calculation, or not personal to the user.\n"
+            "Return the cleaned list in the `facts` field. One fact per item. No explanations."
+        ),
+        pydantic_model=_CompactedMemories,
+        max_tokens=1024,
+    )
+
+    compacted_facts = [f.strip() for f in compacted.facts if f.strip()]
+    if not compacted_facts:
+        logger.warning("[memory_client] compact_memories: LLM returned empty list — aborting")
+        return original_count, original_count
+
+    # 3. Flush all existing points from Qdrant
+    from qdrant_client import QdrantClient
+    from qdrant_client.models import PointStruct
+
+    host = os.environ.get("QDRANT_HOST", "localhost")
+    port = int(os.environ.get("QDRANT_PORT", "6333"))
+    client = QdrantClient(host=host, port=port)
+
+    all_ids = []
+    offset = None
+    while True:
+        batch, next_offset = client.scroll(
+            "langbox_memories",
+            limit=100,
+            offset=offset,
+            with_payload=False,
+            with_vectors=False,
+        )
+        all_ids.extend(p.id for p in batch)
+        if next_offset is None:
+            break
+        offset = next_offset
+
+    if all_ids:
+        client.delete("langbox_memories", points_selector=all_ids)
+
+    # 4. Re-insert compacted facts directly (bypasses LLM extraction)
+    now = datetime.now(timezone.utc).isoformat()
+    points = []
+    for fact in compacted_facts:
+        points.append(
+            PointStruct(
+                id=str(uuid.uuid4()),
+                vector=embed(fact),
+                payload={
+                    "memory": fact,
+                    "user_id": user_id,
+                    "hash": str(hash(fact)),
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+        )
+    client.upsert("langbox_memories", points=points)
+
+    # Reset singleton so mem0's internal state reflects the new collection
+    global _memory
+    _memory = None
+
+    logger.debug(f"[memory_client] compact: {original_count} → {len(compacted_facts)}")
+    return original_count, len(compacted_facts)
+
+
 def search_memories(query: str, user_id: str = "default", limit: int = 5) -> list[str]:
     """Return facts relevant to the query, or [] on failure."""
     try:

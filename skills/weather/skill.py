@@ -3,6 +3,7 @@ import re
 from collections import Counter
 from datetime import datetime
 
+import aiohttp
 from utils.log import logger
 from pydantic import BaseModel
 
@@ -116,3 +117,9 @@ async def handle_weather(query: str) -> str:
   except ValueError as e:
     logger.warning(f"Failed to fetch weather for '{location}': {e}")
     return f"I couldn't find weather data for '{location}'. Could you specify a valid city or location?"
+  except aiohttp.ClientResponseError as e:
+    logger.warning(f"Weather API error for '{location}': {e.status} {e.message}")
+    return "The weather service is temporarily unavailable. Please try again in a moment."
+  except aiohttp.ClientError as e:
+    logger.warning(f"Weather network error for '{location}': {e}")
+    return "I couldn't reach the weather service right now. Please check your connection and try again."

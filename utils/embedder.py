@@ -37,4 +37,13 @@ def get_model():
 
 
 def embed(text: str) -> list[float]:
-    return get_model().embed(text)
+    import os as _os
+    old_err = _os.dup(2)
+    devnull = _os.open(_os.devnull, _os.O_WRONLY)
+    _os.dup2(devnull, 2)
+    try:
+        return get_model().embed(text)
+    finally:
+        _os.dup2(old_err, 2)
+        _os.close(old_err)
+        _os.close(devnull)

@@ -1,6 +1,7 @@
 """Utility for generating structured outputs using llama-cpp-python + outlines."""
 
 import os
+import threading
 import time
 from typing import TypeVar
 
@@ -12,6 +13,11 @@ from utils.log import logger
 from pydantic import BaseModel
 
 T = TypeVar("T", bound=BaseModel)
+
+# Guards the shared Llama instance. Both generate_structured_output() and
+# ChatLlamaCpp (via create_llm/agent_factory) use the same underlying Llama
+# object — concurrent access from background tasks corrupts its KV cache.
+llm_lock = threading.Lock()
 
 
 def _model_path(model_name: str, model_path: str | None = None) -> str:
@@ -90,12 +96,13 @@ def generate_structured_output(
     full_path = _model_path(model_name, model_path)
     llm = _get_or_load_llama(model_name, full_path, n_gpu_layers, llama_kwargs)
 
-    model = outlines.from_llamacpp(llm)
     prompt = (
       f"Following these instructions: {system_prompt}. answer the users query: {user_prompt} "
     )
 
-    result = model(model_input=prompt, output_type=pydantic_model, max_tokens=max_tokens)
+    with llm_lock:
+      model = outlines.from_llamacpp(llm)
+      result = model(model_input=prompt, output_type=pydantic_model, max_tokens=max_tokens)
 
     if isinstance(result, str):
       try:
