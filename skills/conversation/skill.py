@@ -79,6 +79,8 @@ def _chat_prompt_base() -> str:
     name = get_active_name()
     return f"""{get_active_preamble()} Keep it to 1-3 sentences unless more detail is needed. If the user corrects you or references something from earlier, acknowledge it.
 
+Always respond to what the user is saying right now. Do not bring up or continue a previous topic unless the user does.
+
 When referring to things you said earlier in the conversation, always use first person — "I said", "I mentioned", "I told you" — never "the assistant said" or "{name} said".
 
 Write in plain prose only. Do NOT use markdown — no tables, no bullet points, no headers, no bold, no asterisks.
