@@ -2,6 +2,12 @@ import asyncio
 import os
 import sys
 
+# Set LLM backend based on --mlx flag BEFORE any imports that depend on it
+if "--mlx" in sys.argv:
+  os.environ["LANGBOX_LLM_BACKEND"] = "mlx"
+else:
+  os.environ["LANGBOX_LLM_BACKEND"] = "llamacpp"
+
 from rich.console import Console
 
 from agents.intent_classifier import run_intent_classifier
@@ -63,22 +69,55 @@ async def main(debug: bool = False, emote: bool = False):
   
   personalizer_log = await start_personalizer()
 
-  from llama_cpp import llama_supports_gpu_offload
-  from pynvml import (
-      nvmlDeviceGetHandleByIndex,
-      nvmlDeviceGetMemoryInfo,
-      nvmlDeviceGetName,
-      nvmlInit,
-  )
   from rich import box
   from rich.table import Table
-  nvmlInit()
-  _gpu = nvmlDeviceGetHandleByIndex(0)
-  gpu_name = nvmlDeviceGetName(_gpu)
-  gpu_vram = nvmlDeviceGetMemoryInfo(_gpu).total // 1024 ** 2
 
-  with SuppressStderr():
-    gpu_offload = llama_supports_gpu_offload()
+  backend = os.environ.get("LANGBOX_LLM_BACKEND", "llamacpp")
+
+  # GPU/Hardware detection - different for MLX vs llamacpp
+  if backend == "mlx":
+    # MLX on Apple Silicon
+    import platform
+    gpu_name = f"Apple {platform.processor() or 'Silicon'}"
+    gpu_info = "[green]MLX (Metal)[/green]"
+    gpu_offload = True
+  else:
+    # llama.cpp with GPU acceleration (NVIDIA CUDA or Apple Metal)
+    import platform
+    try:
+      from llama_cpp import llama_supports_gpu_offload
+
+      with SuppressStderr():
+        gpu_offload = llama_supports_gpu_offload()
+
+      # Check if we're on macOS (Metal) or Linux/Windows (CUDA)
+      if platform.system() == "Darwin" and gpu_offload:
+        # Apple Silicon with Metal
+        gpu_info = "[green]Metal (GPU)[/green]"
+      elif gpu_offload:
+        # Try to get NVIDIA GPU info
+        try:
+          from pynvml import (
+              nvmlDeviceGetHandleByIndex,
+              nvmlDeviceGetMemoryInfo,
+              nvmlDeviceGetName,
+              nvmlInit,
+          )
+          nvmlInit()
+          _gpu = nvmlDeviceGetHandleByIndex(0)
+          gpu_name = nvmlDeviceGetName(_gpu)
+          gpu_vram = nvmlDeviceGetMemoryInfo(_gpu).total // 1024 ** 2
+          gpu_info = f"{gpu_name} ({gpu_vram:,} MiB), [green]GPU offload[/green]"
+        except Exception:
+          # GPU offload available but can't get GPU details
+          gpu_info = "[green]GPU offload[/green]"
+      else:
+        gpu_info = "[yellow]CPU only[/yellow]"
+    except Exception as e:
+      logger.debug(f"GPU detection failed: {e}")
+      gpu_info = "[yellow]CPU only[/yellow]"
+      gpu_offload = False
+
   boot_time = time.time() - start_time
 
   from agents.persona import get_active_persona_id, get_active_voice_id, get_active_name
@@ -86,8 +125,9 @@ async def main(debug: bool = False, emote: bool = False):
   table = Table(show_header=True, box=box.HEAVY, show_lines=True, padding=(0, 2))
   table.add_column("Action", style="bold cyan")
   table.add_column("Result")
+  table.add_row("Backend", f"[cyan]{backend.upper()}[/cyan]")
   table.add_row("Model", os.environ.get("MODEL_GENERALIST", "unknown"))
-  table.add_row("GPU", f"{gpu_name} ({gpu_vram:,} MiB), [green]GPU offload[/green]" if gpu_offload else "[red]CPU only[/red]")
+  table.add_row("Hardware", gpu_info)
   table.add_row("Persona", f"{get_active_name()} ({get_active_persona_id()})")
   table.add_row("Voice", get_active_voice_id() or "[dim]default[/dim]")
   table.add_row("Debug", "on" if debug else "off")

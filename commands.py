@@ -105,7 +105,7 @@ async def cmd_analyze() -> None:
 
 async def cmd_ctx() -> None:
     import os
-    from utils.llm_structured_output import _get_or_load_llama, _model_path
+    from utils.llm_structured_output_llamacpp import _get_or_load_llama, _model_path
 
     model_name = os.environ.get("MODEL_GENERALIST")
     n_ctx = int(os.environ.get("MODEL_CTX", 8192))

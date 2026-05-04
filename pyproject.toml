@@ -49,6 +49,7 @@ dependencies = [
     "mem0ai[nlp]>=0.1.0",
     "qdrant-client>=1.9.0",
     "fastembed>=0.8.0",
+    "mlx-lm>=0.31.3",
 ]
 
 [tool.ruff]

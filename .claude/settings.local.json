@@ -1,30 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:www.npmjs.com)",
-      "mcp__my-server__query_collection",
-      "WebFetch(domain:pypi.org)",
-      "Bash(rm:*)",
-      "WebSearch",
-      "Bash(uv run ruff:*)",
-      "Bash(uv add:*)",
-      "Bash(uv remove:*)",
-      "Bash(python3:*)",
-      "Bash(find:*)",
-      "Bash(grep:*)",
-      "Bash(uv sync:*)",
-      "Bash(uv run:*)",
-      "Bash(hf download mradermacher/Qwen2.5-7B-Instruct-GGUF Qwen2.5-7B-Instruct.Q4_K_M.gguf --local-dir .)",
-      "Bash(hf download mradermacher/Phi-4-GGUF Phi-4.Q4_K_M.gguf --local-dir .)",
-      "Bash(hf download bartowski/gemma-2-9b-it-GGUF gemma-2-9b-it-Q4_K_M.gguf --local-dir .)",
-      "Bash(xargs sed:*)",
-      "Bash(kill %1)",
-      "Bash(uv --version)",
-      "Read(//home/gokhan/.claude/**)",
-      "Read(//home/gokhan/.config/claude/**)",
-      "mcp__langbox-api__query",
-      "Bash(python *)"
+      "Read(//Users/gokhandemirtas/.cache/huggingface/hub/models--mlabonne--gemma-3-12b-it-qat-abliterated-GGUF/**)",
+      "Bash(uv run python -c \"import outlines; print(outlines.__version__ if hasattr(outlines, ''__version__'') else ''version not found''); from outlines import Generator; import inspect; print(inspect.signature(Generator))\")"
     ],
     "deny": [],
     "ask": []

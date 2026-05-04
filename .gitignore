@@ -9,7 +9,7 @@ wheels/
 # Virtual environments
 .venv
 
-models/*.gguf
+models/
 
 hue_bridge.pem
 
